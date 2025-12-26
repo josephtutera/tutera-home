@@ -25,6 +25,13 @@ export interface Room {
   name: string;
 }
 
+// Merged Room (virtual room combining multiple physical rooms)
+export interface MergedRoom {
+  id: string;               // Prefixed with "merged-" to distinguish from real rooms
+  name: string;             // User-defined name
+  sourceRoomIds: string[];  // Array of real room IDs to combine
+}
+
 // Light
 export interface Light extends CrestronDevice {
   type: "light";
@@ -179,6 +186,10 @@ export interface MediaRoomsResponse {
 
 export interface QuickActionsResponse {
   quickActions: QuickAction[];
+}
+
+export interface MergedRoomsResponse {
+  mergedRooms: MergedRoom[];
 }
 
 // Connection Config

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, RefreshCw, Lightbulb, Blinds } from "lucide-react";
+import { ArrowLeft, RefreshCw, Lightbulb, Blinds, Layers } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { BottomNavigation } from "@/components/layout/Navigation";
@@ -35,17 +35,36 @@ export default function RoomPage() {
   const roomId = params.id as string;
   
   const { isConnected } = useAuthStore();
-  const { rooms, lights, shades, thermostats, sensors, isLoading } = useDeviceStore();
+  const { rooms, mergedRooms, lights, shades, thermostats, sensors, isLoading } = useDeviceStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Find current room
-  const room = rooms.find(r => r.id === roomId);
+  // Check if this is a merged room
+  const isMergedRoom = roomId.startsWith("merged-");
+  const mergedRoom = isMergedRoom ? mergedRooms.find(mr => mr.id === roomId) : null;
   
-  // Filter devices by room
-  const roomLights = lights.filter(l => l.roomId === roomId);
-  const roomShades = shades.filter(s => s.roomId === roomId);
-  const roomThermostats = thermostats.filter(t => t.roomId === roomId);
-  const roomSensors = sensors.filter(s => s.roomId === roomId);
+  // Find current room (either regular or merged)
+  const room = isMergedRoom 
+    ? (mergedRoom ? { id: mergedRoom.id, name: mergedRoom.name } : null)
+    : rooms.find(r => r.id === roomId);
+  
+  // Get the room IDs to filter devices by
+  const targetRoomIds = isMergedRoom && mergedRoom
+    ? mergedRoom.sourceRoomIds
+    : [roomId];
+  
+  // Filter devices by room(s)
+  const roomLights = lights.filter(l => l.roomId && targetRoomIds.includes(l.roomId));
+  const roomShades = shades.filter(s => s.roomId && targetRoomIds.includes(s.roomId));
+  const roomThermostats = thermostats.filter(t => t.roomId && targetRoomIds.includes(t.roomId));
+  const roomSensors = sensors.filter(s => s.roomId && targetRoomIds.includes(s.roomId));
+  
+  // Get source room names for display (for merged rooms)
+  const sourceRoomNames = isMergedRoom && mergedRoom
+    ? mergedRoom.sourceRoomIds
+        .map(id => rooms.find(r => r.id === id)?.name)
+        .filter(Boolean)
+        .join(" + ")
+    : null;
 
   useEffect(() => {
     if (!isConnected) {
@@ -77,9 +96,19 @@ export default function RoomPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-semibold text-[var(--text-primary)]">
-                {room?.name || "Room"}
-              </h1>
+              <div className="flex items-center gap-2">
+                {isMergedRoom && (
+                  <Layers className="w-5 h-5 text-purple-500" />
+                )}
+                <h1 className="text-2xl font-semibold text-[var(--text-primary)]">
+                  {room?.name || "Room"}
+                </h1>
+              </div>
+              {sourceRoomNames && (
+                <p className="text-sm text-[var(--text-tertiary)]">
+                  {sourceRoomNames}
+                </p>
+              )}
               <RefreshedAt />
             </div>
           </div>

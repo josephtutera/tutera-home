@@ -10,7 +10,9 @@ import {
   Palette,
   Lightbulb,
   Blinds,
+  Layers,
 } from "lucide-react";
+import type { MergedRoom } from "@/lib/crestron/types";
 
 const navItems = [
   { href: "/", label: "Home", icon: Home },
@@ -71,11 +73,13 @@ interface RoomTab {
 
 interface RoomTabsProps {
   rooms: RoomTab[];
+  mergedRooms?: MergedRoom[];
   activeRoom: string | null;
   onRoomChange: (roomId: string | null) => void;
+  onManageMergedRooms?: () => void;
 }
 
-export function RoomTabs({ rooms, activeRoom, onRoomChange }: RoomTabsProps) {
+export function RoomTabs({ rooms, mergedRooms = [], activeRoom, onRoomChange, onManageMergedRooms }: RoomTabsProps) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
       <button
@@ -109,6 +113,40 @@ export function RoomTabs({ rooms, activeRoom, onRoomChange }: RoomTabsProps) {
           {room.name}
         </button>
       ))}
+      
+      {/* Merged Rooms - displayed with a visual indicator */}
+      {mergedRooms.map((mergedRoom) => (
+        <button
+          key={mergedRoom.id}
+          onClick={() => onRoomChange(mergedRoom.id)}
+          className={`
+            shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-full)] text-sm font-medium
+            transition-all duration-200
+            ${
+              activeRoom === mergedRoom.id
+                ? "bg-gradient-to-r from-[var(--accent)] to-purple-500 text-white"
+                : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] border border-dashed border-[var(--border-light)]"
+            }
+          `}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          {mergedRoom.name}
+        </button>
+      ))}
+      
+      {/* Manage Merged Rooms Button */}
+      {onManageMergedRooms && (
+        <button
+          onClick={onManageMergedRooms}
+          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-full)] text-sm font-medium
+            bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]
+            transition-all duration-200 border border-dashed border-[var(--border-light)]"
+          title="Manage merged rooms"
+        >
+          <Layers className="w-4 h-4" />
+          <span className="hidden sm:inline">Merge</span>
+        </button>
+      )}
     </div>
   );
 }

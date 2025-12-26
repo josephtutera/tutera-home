@@ -1,0 +1,12 @@
+{
+  "mergedRooms": [
+    {
+      "id": "merged-1766786034925-u7se6xf6z",
+      "name": "Sport Court (Merged)",
+      "sourceRoomIds": [
+        "52184",
+        "56022"
+      ]
+    }
+  ]
+}

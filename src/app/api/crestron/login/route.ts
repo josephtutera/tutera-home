@@ -7,10 +7,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { processorIp, authToken } = body;
 
-    // Use ENV variable if authToken not provided
-    const tokenToUse = authToken || process.env.CRESTON_HOME_KEY;
+    // Use ENV variables if not provided in request
+    const ipToUse = processorIp || process.env.PROCESSOR_IP;
+    const tokenToUse = authToken || process.env.CRESTRON_HOME_KEY;
 
-    if (!processorIp || !tokenToUse) {
+    if (!ipToUse || !tokenToUse) {
       return NextResponse.json(
         { success: false, error: "Missing processorIp or authToken" },
         { status: 400 }
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     // Create client with auth token for login
     const client = new CrestronClient({
-      processorIp,
+      processorIp: ipToUse,
       authToken: tokenToUse,
     });
 

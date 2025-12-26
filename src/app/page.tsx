@@ -23,6 +23,7 @@ import { ThermostatCard } from "@/components/devices/ThermostatCard";
 import { SceneGrid } from "@/components/devices/SceneCard";
 import { LockAllButton } from "@/components/devices/LockCard";
 import { SensorSummary } from "@/components/devices/SensorCard";
+import { MergeRoomsModal } from "@/components/devices/MergeRoomsModal";
 import { QuickActionsBar } from "@/components/layout/QuickActions";
 import { useAuthStore } from "@/stores/authStore";
 import { useDeviceStore, fetchAllData } from "@/stores/deviceStore";
@@ -48,6 +49,7 @@ export default function Dashboard() {
   const { isConnected } = useAuthStore();
   const { 
     rooms, 
+    mergedRooms,
     lights, 
     shades, 
     scenes, 
@@ -59,6 +61,7 @@ export default function Dashboard() {
   
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
 
   // Redirect to login if not connected
   useEffect(() => {
@@ -67,14 +70,32 @@ export default function Dashboard() {
     }
   }, [isConnected, router]);
 
-  // Filter devices by room
-  const filteredLights = selectedRoom 
-    ? lights.filter(l => l.roomId === selectedRoom)
+  // Check if selected room is a merged room
+  const isMergedRoom = selectedRoom?.startsWith("merged-");
+  const selectedMergedRoom = isMergedRoom 
+    ? mergedRooms.find(mr => mr.id === selectedRoom) 
+    : null;
+  
+  // Get target room IDs for filtering (supports merged rooms)
+  const targetRoomIds = isMergedRoom && selectedMergedRoom
+    ? selectedMergedRoom.sourceRoomIds
+    : selectedRoom 
+      ? [selectedRoom]
+      : null;
+
+  // Filter devices by room(s)
+  const filteredLights = targetRoomIds 
+    ? lights.filter(l => l.roomId && targetRoomIds.includes(l.roomId))
     : lights;
   
-  const filteredShades = selectedRoom
-    ? shades.filter(s => s.roomId === selectedRoom)
+  const filteredShades = targetRoomIds
+    ? shades.filter(s => s.roomId && targetRoomIds.includes(s.roomId))
     : shades;
+  
+  // Get display name for selected room
+  const selectedRoomName = isMergedRoom && selectedMergedRoom
+    ? selectedMergedRoom.name
+    : rooms.find(r => r.id === selectedRoom)?.name;
 
   // Manual refresh handler
   const handleRefresh = async () => {
@@ -184,8 +205,10 @@ export default function Dashboard() {
           <div className="mb-6">
             <RoomTabs
               rooms={rooms}
+              mergedRooms={mergedRooms}
               activeRoom={selectedRoom}
               onRoomChange={setSelectedRoom}
+              onManageMergedRooms={() => setIsMergeModalOpen(true)}
             />
           </div>
         )}
@@ -274,7 +297,7 @@ export default function Dashboard() {
                   <div className="space-y-3">
                     <LightGroupControl 
                       lights={filteredLights} 
-                      roomName={rooms.find(r => r.id === selectedRoom)?.name}
+                      roomName={selectedRoomName}
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {filteredLights.map((light) => (
@@ -356,6 +379,14 @@ export default function Dashboard() {
 
       <QuickActionsBar />
       <BottomNavigation />
+      
+      {/* Merge Rooms Modal */}
+      <MergeRoomsModal
+        open={isMergeModalOpen}
+        onOpenChange={setIsMergeModalOpen}
+        rooms={rooms}
+        mergedRooms={mergedRooms}
+      />
     </div>
   );
 }

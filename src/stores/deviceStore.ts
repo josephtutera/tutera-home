@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   Room,
+  MergedRoom,
   Light,
   Shade,
   Scene,
@@ -19,6 +20,7 @@ import { useAuthStore, refreshAuth } from "./authStore";
 interface DeviceState {
   // Data
   rooms: Room[];
+  mergedRooms: MergedRoom[];
   lights: Light[];
   shades: Shade[];
   scenes: Scene[];
@@ -36,6 +38,7 @@ interface DeviceState {
   
   // Actions
   setRooms: (rooms: Room[]) => void;
+  setMergedRooms: (mergedRooms: MergedRoom[]) => void;
   setLights: (lights: Light[]) => void;
   setShades: (shades: Shade[]) => void;
   setScenes: (scenes: Scene[]) => void;
@@ -62,6 +65,7 @@ export const useDeviceStore = create<DeviceState>()(
   persist(
     (set) => ({
       rooms: [],
+      mergedRooms: [],
       lights: [],
       shades: [],
       scenes: [],
@@ -76,6 +80,7 @@ export const useDeviceStore = create<DeviceState>()(
       lastUpdated: null,
 
       setRooms: (rooms) => set({ rooms }),
+      setMergedRooms: (mergedRooms) => set({ mergedRooms }),
       setLights: (lights) => set({ lights }),
       setShades: (shades) => set({ shades }),
       setScenes: (scenes) => set({ scenes }),
@@ -113,6 +118,7 @@ export const useDeviceStore = create<DeviceState>()(
       clearAll: () =>
         set({
           rooms: [],
+          mergedRooms: [],
           lights: [],
           shades: [],
           scenes: [],
@@ -171,11 +177,12 @@ export async function fetchAllData(isRetryAfterRefresh = false) {
   store.setError(null);
   
   try {
-    // Fetch all data in parallel
-    const [roomsData, devicesData, scenesData] = await Promise.all([
+    // Fetch all data in parallel (including merged rooms from server)
+    const [roomsData, devicesData, scenesData, mergedRoomsData] = await Promise.all([
       fetchWithAuth("rooms"),
       fetchWithAuth("devices"),
       fetchWithAuth("scenes"),
+      fetch("/api/crestron/merged-rooms").then(res => res.json()),
     ]);
     
     // Check if all responses indicate potential auth failure (empty data or errors)
@@ -244,6 +251,11 @@ export async function fetchAllData(isRetryAfterRefresh = false) {
     // Process scenes - only update if we got actual data
     if (scenesData.success && scenesArray.length > 0) {
       store.setScenes(scenesArray);
+    }
+    
+    // Process merged rooms from server
+    if (mergedRoomsData.success && Array.isArray(mergedRoomsData.data)) {
+      store.setMergedRooms(mergedRoomsData.data);
     }
     
     // Update timestamp on success
@@ -462,6 +474,84 @@ export async function setDoorLockState(id: string, isLocked: boolean) {
     });
     const data = await response.json();
     return data.success;
+  } catch {
+    return false;
+  }
+}
+
+// Merged Rooms CRUD operations
+
+export async function fetchMergedRooms() {
+  const { setMergedRooms, setError } = useDeviceStore.getState();
+  try {
+    const response = await fetch("/api/crestron/merged-rooms");
+    const data = await response.json();
+    if (data.success && Array.isArray(data.data)) {
+      setMergedRooms(data.data);
+    } else {
+      setError(data.error || "Failed to fetch merged rooms");
+    }
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Failed to fetch merged rooms");
+  }
+}
+
+export async function createMergedRoom(name: string, sourceRoomIds: string[]) {
+  const { setMergedRooms, mergedRooms } = useDeviceStore.getState();
+  
+  try {
+    const response = await fetch("/api/crestron/merged-rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, sourceRoomIds }),
+    });
+    const data = await response.json();
+    if (data.success && data.data) {
+      // Add the new merged room to state
+      setMergedRooms([...mergedRooms, data.data]);
+      return data.data;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateMergedRoom(id: string, name?: string, sourceRoomIds?: string[]) {
+  const { setMergedRooms, mergedRooms } = useDeviceStore.getState();
+  
+  try {
+    const response = await fetch("/api/crestron/merged-rooms", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name, sourceRoomIds }),
+    });
+    const data = await response.json();
+    if (data.success && data.data) {
+      // Update the merged room in state
+      setMergedRooms(mergedRooms.map(room => room.id === id ? data.data : room));
+      return data.data;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteMergedRoom(id: string) {
+  const { setMergedRooms, mergedRooms } = useDeviceStore.getState();
+  
+  try {
+    const response = await fetch(`/api/crestron/merged-rooms?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    const data = await response.json();
+    if (data.success) {
+      // Remove the merged room from state
+      setMergedRooms(mergedRooms.filter(room => room.id !== id));
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }

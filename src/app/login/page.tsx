@@ -169,7 +169,7 @@ export default function LoginPage() {
                   type="password"
                   value={authToken}
                   onChange={(e) => setAuthToken(e.target.value)}
-                  placeholder="Uses CRESTON_HOME_KEY env if empty"
+                  placeholder="Uses CRESTRON_HOME_KEY env if empty"
                   className="
                     w-full pl-10 pr-4 py-3
                     bg-[var(--surface)] border border-[var(--border)]
@@ -182,7 +182,7 @@ export default function LoginPage() {
                 />
               </div>
               <p className="mt-1.5 text-xs text-[var(--text-tertiary)]">
-                Leave empty to use CRESTON_HOME_KEY from environment
+                Leave empty to use CRESTRON_HOME_KEY from environment
               </p>
             </div>
 
