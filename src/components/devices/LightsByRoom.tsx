@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Lightbulb, AlertCircle } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { LightCard, LightGroupControl } from "./LightCard";
+import { LightCard, LightGroupControl, levelToPercent, percentToLevel } from "./LightCard";
 import type { Light, Room } from "@/lib/crestron/types";
+import { setLightState } from "@/stores/deviceStore";
 
 interface LightsByRoomProps {
   lights: Light[];
@@ -18,6 +19,186 @@ interface RoomGroup {
   roomId: string | undefined;
   roomName: string;
   lights: Light[];
+}
+
+// Swipeable Room Header Component
+interface SwipeableRoomHeaderProps {
+  group: RoomGroup;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  isWarning?: boolean;
+}
+
+function SwipeableRoomHeader({ group, isExpanded, onToggleExpand, isWarning = false }: SwipeableRoomHeaderProps) {
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPercent, setDragPercent] = useState<number | null>(null);
+  const [startX, setStartX] = useState(0);
+  const headerRef = useRef<HTMLDivElement>(null);
+  
+  const onCount = group.lights.filter(l => l.isOn || l.level > 0).length;
+  const totalLights = group.lights.length;
+  
+  // Calculate average brightness of all lights
+  const avgPercent = useMemo(() => {
+    if (totalLights === 0) return 0;
+    const totalLevel = group.lights.reduce((sum, l) => sum + l.level, 0);
+    return levelToPercent(Math.round(totalLevel / totalLights));
+  }, [group.lights, totalLights]);
+  
+  const isOn = onCount > 0;
+
+  const handleAllLights = useCallback(async (targetPercent: number) => {
+    setIsUpdating(true);
+    const targetLevel = percentToLevel(targetPercent);
+    const isOn = targetPercent > 0;
+    
+    for (const light of group.lights) {
+      await setLightState(light.id, targetLevel, isOn);
+    }
+    setIsUpdating(false);
+  }, [group.lights]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (isUpdating) return;
+    // Don't start dragging if clicking on expand chevron area
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-expand-button]')) return;
+    
+    setIsDragging(true);
+    setStartX(e.clientX);
+    setDragPercent(avgPercent);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [isUpdating, avgPercent]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging || isUpdating) return;
+    
+    const headerWidth = headerRef.current?.offsetWidth || 300;
+    const deltaX = e.clientX - startX;
+    const percentChange = (deltaX / headerWidth) * 100;
+    const newPercent = Math.max(0, Math.min(100, avgPercent + percentChange));
+    setDragPercent(Math.round(newPercent));
+  }, [isDragging, isUpdating, startX, avgPercent]);
+
+  const handlePointerUp = useCallback(async (e: React.PointerEvent) => {
+    if (!isDragging) return;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    
+    const headerWidth = headerRef.current?.offsetWidth || 300;
+    const deltaX = e.clientX - startX;
+    const percentChange = (deltaX / headerWidth) * 100;
+    const newPercent = Math.max(0, Math.min(100, avgPercent + percentChange));
+    
+    await handleAllLights(Math.round(newPercent));
+    
+    setIsDragging(false);
+    setDragPercent(null);
+  }, [isDragging, startX, avgPercent, handleAllLights]);
+
+  const displayPercent = isDragging && dragPercent !== null ? dragPercent : avgPercent;
+  const bgFillPercent = isDragging && dragPercent !== null ? dragPercent : (isOn ? avgPercent : 0);
+
+  return (
+    <div
+      ref={headerRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      className={`
+        relative overflow-hidden w-full flex items-center justify-between p-3 rounded-xl
+        cursor-ew-resize select-none touch-none
+        transition-shadow duration-200
+        ${isDragging ? "shadow-[var(--shadow-lg)] z-10" : ""}
+        ${isUpdating ? "opacity-70 pointer-events-none" : ""}
+      `}
+    >
+      {/* Dynamic background gradient fill - white to yellow */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none rounded-xl"
+        animate={{
+          background: isWarning 
+            ? `linear-gradient(90deg, 
+                rgba(245,158,11,0.1) 0%, 
+                rgba(245,158,11,${0.1 + (bgFillPercent / 100) * 0.2}) ${bgFillPercent}%, 
+                rgba(245,158,11,0.1) ${bgFillPercent + 2}%
+              )`
+            : `linear-gradient(90deg, 
+                rgba(255,255,255,0.95) 0%, 
+                rgba(252,211,77,${0.2 + (bgFillPercent / 100) * 0.4}) ${bgFillPercent}%, 
+                rgba(245,158,11,${0.15 + (bgFillPercent / 100) * 0.4}) ${bgFillPercent}%, 
+                rgba(255,255,255,0.95) ${bgFillPercent + 2}%
+              )`,
+        }}
+        transition={{ duration: isDragging ? 0.05 : 0.3 }}
+      />
+      
+      {/* Base background */}
+      <div className={`absolute inset-0 rounded-xl -z-10 ${isWarning ? "bg-[var(--warning)]/10" : "bg-[var(--surface)]"}`} />
+      
+      {/* Content */}
+      <div className="relative flex items-center gap-3">
+        <motion.div 
+          animate={{
+            backgroundColor: bgFillPercent > 0 
+              ? `rgba(252,211,77,${0.4 + (bgFillPercent / 100) * 0.4})` 
+              : isWarning ? "rgba(245,158,11,0.2)" : "rgba(252,211,77,0.2)",
+          }}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center`}
+        >
+          <Lightbulb className={`w-4 h-4 transition-colors ${bgFillPercent > 0 ? "text-white" : isWarning ? "text-[var(--warning)]" : "text-[var(--light-color)]"}`} />
+        </motion.div>
+        <div className="text-left">
+          <p className="font-medium text-[var(--text-primary)]">
+            {group.roomName}
+          </p>
+          <p className="text-xs text-[var(--text-secondary)]">
+            {isDragging ? (
+              <span className="text-[var(--light-color-warm)] font-semibold">{displayPercent}%</span>
+            ) : (
+              `${onCount} of ${totalLights} on`
+            )}
+          </p>
+        </div>
+      </div>
+      
+      <div className="relative flex items-center gap-3">
+        {/* Percentage/count display */}
+        <span className={`text-sm tabular-nums transition-colors ${isDragging ? "text-[var(--light-color-warm)] font-semibold" : "text-[var(--text-tertiary)]"}`}>
+          {isDragging ? `${displayPercent}%` : `${totalLights} light${totalLights !== 1 ? "s" : ""}`}
+        </span>
+        
+        {/* Expand button */}
+        <button
+          data-expand-button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand();
+          }}
+          className="p-1 hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
+        >
+          {isExpanded ? (
+            <ChevronDown className="w-5 h-5 text-[var(--text-tertiary)]" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)]" />
+          )}
+        </button>
+      </div>
+      
+      {/* Mini brightness bar */}
+      <div className="absolute bottom-0 left-3 right-3 h-1 bg-[var(--border)]/50 rounded-full overflow-hidden">
+        <motion.div
+          className="h-full rounded-full"
+          style={{
+            background: "linear-gradient(90deg, var(--light-color), var(--light-color-warm))",
+          }}
+          animate={{ width: `${displayPercent}%` }}
+          transition={{ duration: isDragging ? 0.05 : 0.3 }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export function LightsByRoom({ 
@@ -116,7 +297,7 @@ export function LightsByRoom({
               </p>
             </div>
           </div>
-          <LightGroupControl lights={lights} />
+          <LightGroupControl lights={lights} standalone={false} />
         </div>
       </Card>
 
@@ -138,7 +319,6 @@ export function LightsByRoom({
           
           const roomKey = group.roomId || "unassigned";
           const isExpanded = expandedRooms.has(roomKey);
-          const onCount = group.lights.filter(l => l.isOn || l.level > 0).length;
           const visibleLights = isExpanded ? group.lights : group.lights.slice(0, maxLightsPerRoom);
           const hasMore = group.lights.length > maxLightsPerRoom && !isExpanded;
 
@@ -150,48 +330,13 @@ export function LightsByRoom({
               animate={{ opacity: 1, y: 0 }}
               className="space-y-2"
             >
-              {/* Room Header */}
-              <button
-                onClick={() => toggleRoom(roomKey)}
-                className={`
-                  w-full flex items-center justify-between p-3 rounded-xl
-                  transition-all duration-200
-                  ${!group.roomId 
-                    ? "bg-[var(--warning)]/10 hover:bg-[var(--warning)]/15" 
-                    : "bg-[var(--surface)] hover:bg-[var(--surface-hover)]"
-                  }
-                `}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`
-                    w-8 h-8 rounded-lg flex items-center justify-center
-                    ${!group.roomId 
-                      ? "bg-[var(--warning)]/20 text-[var(--warning)]"
-                      : "bg-[var(--light-color)]/20 text-[var(--light-color)]"
-                    }
-                  `}>
-                    <Lightbulb className="w-4 h-4" />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-medium text-[var(--text-primary)]">
-                      {group.roomName}
-                    </p>
-                    <p className="text-xs text-[var(--text-secondary)]">
-                      {onCount} of {group.lights.length} on
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-[var(--text-tertiary)]">
-                    {group.lights.length} light{group.lights.length !== 1 ? "s" : ""}
-                  </span>
-                  {isExpanded ? (
-                    <ChevronDown className="w-5 h-5 text-[var(--text-tertiary)]" />
-                  ) : (
-                    <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)]" />
-                  )}
-                </div>
-              </button>
+              {/* Swipeable Room Header */}
+              <SwipeableRoomHeader
+                group={group}
+                isExpanded={isExpanded}
+                onToggleExpand={() => toggleRoom(roomKey)}
+                isWarning={!group.roomId}
+              />
 
               {/* Lights in Room */}
               <AnimatePresence>

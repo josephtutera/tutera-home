@@ -30,6 +30,9 @@
   
   /* Device Type Colors */
   --light-color: #FCD34D;
+  --light-color-warm: #F59E0B;
+  --light-color-glow: rgba(252, 211, 77, 0.4);
+  --light-color-glow-strong: rgba(252, 211, 77, 0.6);
   --climate-color: #06B6D4;
   --security-color: #8B5CF6;
   --shade-color: #6366F1;
