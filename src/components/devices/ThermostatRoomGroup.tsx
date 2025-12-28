@@ -147,17 +147,20 @@ export function ThermostatRoomGroup({ pair }: ThermostatRoomGroupProps) {
             <div className="flex flex-col items-center">
               <button
                 onClick={() => handleSetPointChange(1)}
-                disabled={isUpdating || mode === "off"}
+                disabled={isUpdating}
                 className="p-2 rounded-lg hover:bg-[var(--surface-hover)] disabled:opacity-50 transition-colors"
               >
                 <ChevronUp className="w-5 h-5" />
               </button>
-              <p className="text-3xl font-semibold" style={{ color: config.color }}>
+              <p 
+                className="text-3xl font-semibold" 
+                style={{ color: mode === "off" ? "#EAB308" : config.color }}
+              >
                 {currentSetPoint}°
               </p>
               <button
                 onClick={() => handleSetPointChange(-1)}
-                disabled={isUpdating || mode === "off"}
+                disabled={isUpdating}
                 className="p-2 rounded-lg hover:bg-[var(--surface-hover)] disabled:opacity-50 transition-colors"
               >
                 <ChevronDown className="w-5 h-5" />

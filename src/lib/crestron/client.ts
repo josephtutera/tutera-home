@@ -201,6 +201,14 @@ export class CrestronClient {
       setpoints.push({ type: "Cool", temperature: payload.coolSetPoint * 10 });
     }
     
+    // Don't send request if no setpoints are provided
+    if (setpoints.length === 0) {
+      return {
+        success: false,
+        error: "At least one setpoint (heat or cool) must be provided",
+      };
+    }
+    
     const crestronPayload = {
       id: Number(payload.id),  // Convert string ID to number
       setpoints,

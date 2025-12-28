@@ -47,6 +47,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, action, ...params } = body;
+    
+    // Log request for debugging
+    console.log("Thermostat API request:", { id, action, params });
 
     if (!id || !action) {
       return NextResponse.json(
@@ -83,8 +86,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // Log error details for debugging
+    console.error("Thermostat API error:", {
+      action,
+      id,
+      params,
+      error: result.error,
+    });
     return NextResponse.json(result, { status: 500 });
   } catch (error) {
+    // Log exception details for debugging
+    console.error("Thermostat API exception:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Failed to update thermostat" },
       { status: 500 }

@@ -98,7 +98,39 @@ export const useDeviceStore = create<DeviceState>()(
       setLights: (lights) => set({ lights }),
       setShades: (shades) => set({ shades }),
       setScenes: (scenes) => set({ scenes }),
-      setThermostats: (thermostats) => set({ thermostats }),
+      setThermostats: (thermostats) => set((state) => {
+        // Preserve setpoints when Crestron doesn't provide them (e.g., when mode is Off)
+        // If new heatSetPoint equals currentTemp and mode is "off", it likely means
+        // Crestron didn't provide setpoint data, so we preserve the existing setpoint
+        const mergedThermostats = thermostats.map((newThermo) => {
+          const existingThermo = state.thermostats.find((t) => t.id === newThermo.id);
+          
+          // If no existing thermostat, use the new one as-is
+          if (!existingThermo) {
+            return newThermo;
+          }
+          
+          // If mode is "off" and heatSetPoint equals currentTemp (likely defaulted by transform),
+          // preserve existing setpoints to maintain the last set target temperature
+          // Only preserve if existing setpoint is different from the new currentTemp (indicating it was actually set)
+          if (
+            newThermo.mode === "off" && 
+            newThermo.heatSetPoint === newThermo.currentTemp &&
+            existingThermo.heatSetPoint !== newThermo.currentTemp
+          ) {
+            return {
+              ...newThermo,
+              heatSetPoint: existingThermo.heatSetPoint,
+              coolSetPoint: existingThermo.coolSetPoint,
+            };
+          }
+          
+          // Otherwise use the new data (setpoints were provided by Crestron or match current temp)
+          return newThermo;
+        });
+        
+        return { thermostats: mergedThermostats };
+      }),
       setThermostatZones: (thermostatZones) => set({ thermostatZones }),
       setDoorLocks: (doorLocks) => set({ doorLocks }),
       setSensors: (sensors) => set({ sensors }),
@@ -517,6 +549,12 @@ export async function recallScene(id: string) {
 }
 
 export async function setThermostatSetPoint(id: string, heatSetPoint?: number, coolSetPoint?: number) {
+  // Don't send request if both setpoints are undefined
+  if (heatSetPoint === undefined && coolSetPoint === undefined) {
+    console.warn("setThermostatSetPoint called with both setpoints undefined");
+    return false;
+  }
+  
   const headers = useAuthStore.getState().getAuthHeaders();
   const { updateThermostat } = useDeviceStore.getState();
   
@@ -527,10 +565,22 @@ export async function setThermostatSetPoint(id: string, heatSetPoint?: number, c
   });
   
   try {
+    // Build request body, only including defined values
+    const body: { id: string; action: string; heatSetPoint?: number; coolSetPoint?: number } = {
+      id,
+      action: "setPoint",
+    };
+    if (heatSetPoint !== undefined) {
+      body.heatSetPoint = heatSetPoint;
+    }
+    if (coolSetPoint !== undefined) {
+      body.coolSetPoint = coolSetPoint;
+    }
+    
     const response = await fetch("/api/crestron/thermostats", {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ id, action: "setPoint", heatSetPoint, coolSetPoint }),
+      body: JSON.stringify(body),
     });
     const data = await response.json();
     return data.success;
@@ -579,7 +629,15 @@ export async function setThermostatFanMode(id: string, fanMode: FanMode) {
 
 // Get thermostat pairs grouped by room
 export function getThermostatPairs(): ThermostatPair[] {
-  const { thermostats, rooms } = useDeviceStore.getState();
+  const { thermostats, rooms, areas } = useDeviceStore.getState();
+  
+  // Build a map of roomId to area name for sorting
+  const roomToAreaMap = new Map<string, string>();
+  areas.forEach(area => {
+    area.roomIds.forEach(roomId => {
+      roomToAreaMap.set(roomId, area.name);
+    });
+  });
   
   // Group thermostats by roomId
   const roomGroups = new Map<string, Thermostat[]>();
@@ -620,6 +678,17 @@ export function getThermostatPairs(): ThermostatPair[] {
       });
     }
   }
+  
+  // Sort pairs by area order (same as "By Zone" view), then by room name
+  pairs.sort((a, b) => {
+    const areaA = roomToAreaMap.get(a.roomId) || '';
+    const areaB = roomToAreaMap.get(b.roomId) || '';
+    const orderA = getZoneOrder(areaA);
+    const orderB = getZoneOrder(areaB);
+    if (orderA !== orderB) return orderA - orderB;
+    // Secondary sort by room name
+    return a.roomName.localeCompare(b.roomName);
+  });
   
   return pairs;
 }
@@ -892,10 +961,22 @@ export async function setZoneThermostatTemp(
     // Set temperature on all thermostats
     const results = await Promise.all(
       zoneThermostats.map(async (t) => {
+        // Build request body, only including defined values
+        const body: { id: string; action: string; heatSetPoint?: number; coolSetPoint?: number } = {
+          id: t.id,
+          action: "setPoint",
+        };
+        if (setpointPayload.heatSetPoint !== undefined) {
+          body.heatSetPoint = setpointPayload.heatSetPoint;
+        }
+        if (setpointPayload.coolSetPoint !== undefined) {
+          body.coolSetPoint = setpointPayload.coolSetPoint;
+        }
+        
         const response = await fetch("/api/crestron/thermostats", {
           method: "POST",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ id: t.id, action: "setPoint", ...setpointPayload }),
+          body: JSON.stringify(body),
         });
         return (await response.json()).success;
       })
@@ -1055,14 +1136,22 @@ export async function setAllThermostatsTemp(
     
     const results = await Promise.all(
       thermostats.map(async (thermostat) => {
+        // Build request body, only including defined values
+        const body: { id: string; action: string; heatSetPoint?: number; coolSetPoint?: number } = {
+          id: thermostat.id,
+          action: "setPoint",
+        };
+        if (setpointPayload.heatSetPoint !== undefined) {
+          body.heatSetPoint = setpointPayload.heatSetPoint;
+        }
+        if (setpointPayload.coolSetPoint !== undefined) {
+          body.coolSetPoint = setpointPayload.coolSetPoint;
+        }
+        
         const response = await fetch("/api/crestron/thermostats", {
           method: "POST",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            id: thermostat.id, 
-            action: "setPoint", 
-            ...setpointPayload
-          }),
+          body: JSON.stringify(body),
         });
         const data = await response.json();
         return data.success;

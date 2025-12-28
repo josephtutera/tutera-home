@@ -25,6 +25,7 @@ import {
   setZoneThermostatMode,
   setZoneThermostatFanMode,
   setZoneThermostatTemp,
+  setThermostatSetPoint,
   useDeviceStore,
   getThermostatPairs,
 } from "@/stores/deviceStore";
@@ -226,6 +227,40 @@ export function ThermostatZoneControl({
     setIsUpdating(false);
   }, [zone.id, dominantMode]);
   
+  // Handler for applying preset configurations
+  const handlePresetApply = useCallback(async (preset: { mode: ThermostatMode; heatSetPoint?: number; coolSetPoint?: number }) => {
+    setIsUpdating(true);
+    try {
+      // First set the mode
+      await setZoneThermostatMode(zone.id, preset.mode);
+      
+      // Then set the setpoints for all thermostats in the zone
+      const results = await Promise.all(
+        mainThermostats.map(async (t) => {
+          await setThermostatSetPoint(
+            t.id, 
+            preset.heatSetPoint, 
+            preset.coolSetPoint
+          );
+        })
+      );
+      
+      // Update local target temp for display
+      if (preset.mode === "cool" && preset.coolSetPoint !== undefined) {
+        setTargetTemp(preset.coolSetPoint);
+      } else if (preset.mode === "heat" && preset.heatSetPoint !== undefined) {
+        setTargetTemp(preset.heatSetPoint);
+      } else if (preset.mode === "auto" && preset.heatSetPoint !== undefined) {
+        // For auto mode, use the heat setpoint as the display temp
+        setTargetTemp(preset.heatSetPoint);
+      }
+    } catch (error) {
+      console.error("Failed to apply preset:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [zone.id, mainThermostats]);
+
   const handleFanModeChange = useCallback(async (newFanMode: FanMode) => {
     if (newFanMode === dominantFanMode) return;
     setIsUpdating(true);
@@ -356,7 +391,7 @@ export function ThermostatZoneControl({
           <div className="flex items-center justify-center gap-6">
             <button
               onClick={(e) => { e.stopPropagation(); handleTempChange(-1); }}
-              disabled={isUpdating || targetTemp <= 50 || dominantMode === "off"}
+              disabled={isUpdating || targetTemp <= 50}
               className="w-12 h-12 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] 
                        flex items-center justify-center transition-all duration-200 disabled:opacity-50
                        shadow-sm border border-[var(--border)] active:scale-95"
@@ -368,20 +403,20 @@ export function ThermostatZoneControl({
               <div className="flex items-baseline gap-1">
                 <span 
                   className="text-5xl font-light transition-colors"
-                  style={{ color: dominantMode === "off" ? "var(--text-tertiary)" : tempColor }}
+                  style={{ color: dominantMode === "off" ? "#EAB308" : tempColor }}
                 >
                   {targetTemp}
                 </span>
                 <span className="text-2xl text-[var(--text-tertiary)]">°F</span>
               </div>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                {dominantMode === "off" ? "Thermostats Off" : "Target Temperature"}
+                {dominantMode === "off" ? "Pending Temperature" : "Target Temperature"}
               </p>
             </div>
             
             <button
               onClick={(e) => { e.stopPropagation(); handleTempChange(1); }}
-              disabled={isUpdating || targetTemp >= 90 || dominantMode === "off"}
+              disabled={isUpdating || targetTemp >= 90}
               className="w-12 h-12 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] 
                        flex items-center justify-center transition-all duration-200 disabled:opacity-50
                        shadow-sm border border-[var(--border)] active:scale-95"
@@ -399,7 +434,7 @@ export function ThermostatZoneControl({
               value={targetTemp}
               onChange={handleSliderChange}
               onClick={(e) => e.stopPropagation()}
-              disabled={isUpdating || dominantMode === "off"}
+              disabled={isUpdating}
               className="w-full h-2 rounded-full appearance-none cursor-pointer
                        bg-gradient-to-r from-blue-500 via-green-500 via-yellow-500 to-red-500
                        [&::-webkit-slider-thumb]:appearance-none
@@ -498,25 +533,32 @@ export function ThermostatZoneControl({
           <p className="text-xs font-medium text-[var(--text-secondary)] mb-3 uppercase tracking-wider">Quick Presets</p>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: "Energy Saver", temp: 68, icon: "🌿" },
-              { label: "Comfort", temp: 72, icon: "😊" },
-              { label: "Warm", temp: 76, icon: "☀️" },
+              { label: "Energy Saver", mode: "auto" as ThermostatMode, heatSetPoint: 60, coolSetPoint: 80, displayTemp: 60, icon: "🌿" },
+              { label: "Comfort", mode: "auto" as ThermostatMode, heatSetPoint: 70, coolSetPoint: 70, displayTemp: 70, icon: "😊" },
+              { label: "Warm", mode: "cool" as ThermostatMode, coolSetPoint: 76, displayTemp: 76, icon: "☀️" },
             ].map((preset) => (
               <button
-                key={preset.temp}
-                onClick={(e) => { e.stopPropagation(); setTargetTemp(preset.temp); }}
-                disabled={isUpdating || dominantMode === "off"}
+                key={preset.label}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  handlePresetApply({
+                    mode: preset.mode,
+                    heatSetPoint: 'heatSetPoint' in preset ? preset.heatSetPoint : undefined,
+                    coolSetPoint: 'coolSetPoint' in preset ? preset.coolSetPoint : undefined,
+                  });
+                }}
+                disabled={isUpdating}
                 className={`
                   py-3 px-3 rounded-xl text-sm font-medium
                   transition-all duration-200 disabled:opacity-50
-                  ${targetTemp === preset.temp
+                  ${targetTemp === preset.displayTemp && dominantMode === preset.mode
                     ? "bg-[var(--climate-color)]/20 text-[var(--climate-color)] border border-[var(--climate-color)]/30 shadow-sm"
                     : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
                   }
                 `}
               >
                 <span className="block text-lg mb-0.5">{preset.icon}</span>
-                <span className="block font-bold">{preset.temp}°</span>
+                <span className="block font-bold">{preset.displayTemp}°</span>
                 <span className="block text-xs opacity-70">{preset.label}</span>
               </button>
             ))}

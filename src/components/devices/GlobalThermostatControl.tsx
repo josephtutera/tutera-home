@@ -10,8 +10,9 @@ import {
   CloudSun,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import type { Thermostat } from "@/lib/crestron/types";
-import { setAllThermostatsTemp } from "@/stores/deviceStore";
+import type { Thermostat, ThermostatMode } from "@/lib/crestron/types";
+import { isFloorHeat } from "@/lib/crestron/types";
+import { setAllThermostatsTemp, setThermostatMode, setThermostatSetPoint } from "@/stores/deviceStore";
 import { useWeatherStore, fetchWeather, determineMode, getModeRecommendation } from "@/stores/weatherStore";
 
 interface GlobalThermostatControlProps {
@@ -86,6 +87,29 @@ export function GlobalThermostatControl({ thermostats }: GlobalThermostatControl
     }
     setIsUpdating(false);
   }, [targetTemp, avgSetPoint, recommendedMode]);
+
+  // Handler for applying preset configurations
+  const handlePresetApply = useCallback(async (preset: { mode: ThermostatMode; heatSetPoint?: number; coolSetPoint?: number; displayTemp: number }) => {
+    setIsUpdating(true);
+    try {
+      const mainThermostats = thermostats.filter(t => !isFloorHeat(t));
+      
+      // First set the mode for all main thermostats
+      await Promise.all(mainThermostats.map(t => setThermostatMode(t.id, preset.mode)));
+      
+      // Then set the setpoints
+      await Promise.all(mainThermostats.map(t => 
+        setThermostatSetPoint(t.id, preset.heatSetPoint, preset.coolSetPoint)
+      ));
+      
+      // Update local target temp for display
+      setTargetTemp(preset.displayTemp);
+    } catch (error) {
+      console.error("Failed to apply preset:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [thermostats]);
 
   const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setTargetTemp(parseInt(e.target.value, 10));
@@ -274,24 +298,24 @@ export function GlobalThermostatControl({ thermostats }: GlobalThermostatControl
         {/* Quick Presets */}
         <div className="grid grid-cols-3 gap-2 mt-2">
           {[
-            { label: "Energy Saver", temp: 68 },
-            { label: "Comfort", temp: 72 },
-            { label: "Warm", temp: 76 },
+            { label: "Energy Saver", mode: "auto" as ThermostatMode, heatSetPoint: 60, coolSetPoint: 80, displayTemp: 60 },
+            { label: "Comfort", mode: "auto" as ThermostatMode, heatSetPoint: 70, coolSetPoint: 70, displayTemp: 70 },
+            { label: "Warm", mode: "cool" as ThermostatMode, coolSetPoint: 76, displayTemp: 76 },
           ].map((preset) => (
             <button
-              key={preset.temp}
-              onClick={() => setTargetTemp(preset.temp)}
+              key={preset.label}
+              onClick={() => handlePresetApply(preset)}
               disabled={isUpdating}
               className={`
                 py-2 px-3 rounded-xl text-xs font-medium
                 transition-all duration-200
-                ${targetTemp === preset.temp
+                ${targetTemp === preset.displayTemp
                   ? "bg-[var(--climate-color)]/20 text-[var(--climate-color)] border border-[var(--climate-color)]/30"
                   : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
                 }
               `}
             >
-              <span className="block font-semibold">{preset.temp}°</span>
+              <span className="block font-semibold">{preset.displayTemp}°</span>
               <span className="block opacity-70">{preset.label}</span>
             </button>
           ))}
