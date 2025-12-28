@@ -17,6 +17,9 @@ import type {
   QuickAction,
   ThermostatPair,
   ThermostatMode,
+  ThermostatZone,
+  ThermostatZoneWithData,
+  FanMode,
 } from "@/lib/crestron/types";
 import { isFloorHeat, isTemperatureSatisfied } from "@/lib/crestron/types";
 import { useAuthStore, refreshAuth } from "./authStore";
@@ -30,6 +33,7 @@ interface DeviceState {
   shades: Shade[];
   scenes: Scene[];
   thermostats: Thermostat[];
+  thermostatZones: ThermostatZone[];
   doorLocks: DoorLock[];
   sensors: Sensor[];
   securityDevices: SecurityDevice[];
@@ -49,6 +53,7 @@ interface DeviceState {
   setShades: (shades: Shade[]) => void;
   setScenes: (scenes: Scene[]) => void;
   setThermostats: (thermostats: Thermostat[]) => void;
+  setThermostatZones: (zones: ThermostatZone[]) => void;
   setDoorLocks: (doorLocks: DoorLock[]) => void;
   setSensors: (sensors: Sensor[]) => void;
   setSecurityDevices: (securityDevices: SecurityDevice[]) => void;
@@ -77,6 +82,7 @@ export const useDeviceStore = create<DeviceState>()(
       shades: [],
       scenes: [],
       thermostats: [],
+      thermostatZones: [],
       doorLocks: [],
       sensors: [],
       securityDevices: [],
@@ -93,6 +99,7 @@ export const useDeviceStore = create<DeviceState>()(
       setShades: (shades) => set({ shades }),
       setScenes: (scenes) => set({ scenes }),
       setThermostats: (thermostats) => set({ thermostats }),
+      setThermostatZones: (thermostatZones) => set({ thermostatZones }),
       setDoorLocks: (doorLocks) => set({ doorLocks }),
       setSensors: (sensors) => set({ sensors }),
       setSecurityDevices: (securityDevices) => set({ securityDevices }),
@@ -132,6 +139,7 @@ export const useDeviceStore = create<DeviceState>()(
           shades: [],
           scenes: [],
           thermostats: [],
+          thermostatZones: [],
           doorLocks: [],
           sensors: [],
           securityDevices: [],
@@ -152,6 +160,7 @@ export const useDeviceStore = create<DeviceState>()(
         shades: state.shades,
         scenes: state.scenes,
         thermostats: state.thermostats,
+        thermostatZones: state.thermostatZones,
         doorLocks: state.doorLocks,
         sensors: state.sensors,
         securityDevices: state.securityDevices,
@@ -549,6 +558,25 @@ export async function setThermostatMode(id: string, mode: string) {
   }
 }
 
+export async function setThermostatFanMode(id: string, fanMode: FanMode) {
+  const headers = useAuthStore.getState().getAuthHeaders();
+  const { updateThermostat } = useDeviceStore.getState();
+  
+  updateThermostat(id, { fanMode });
+  
+  try {
+    const response = await fetch("/api/crestron/thermostats", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action: "fanMode", fanMode }),
+    });
+    const data = await response.json();
+    return data.success;
+  } catch {
+    return false;
+  }
+}
+
 // Get thermostat pairs grouped by room
 export function getThermostatPairs(): ThermostatPair[] {
   const { thermostats, rooms } = useDeviceStore.getState();
@@ -594,6 +622,289 @@ export function getThermostatPairs(): ThermostatPair[] {
   }
   
   return pairs;
+}
+
+// Zone display order - lower number = higher priority (displayed first)
+// Order: 1st Floor → Master Suite → 2nd Floor → Lower Level
+const ZONE_ORDER: Record<string, number> = {
+  "1st floor": 1,
+  "master suite": 2,
+  "2nd floor": 3,
+  "lower level": 4,
+  "exterior": 5,
+  "infrastructure": 6,
+};
+
+// Get zone sort order (lower = first)
+function getZoneOrder(zoneName: string): number {
+  const normalized = zoneName.toLowerCase().trim();
+  return ZONE_ORDER[normalized] ?? 99; // Unknown zones go last
+}
+
+// Get all thermostat zones with computed data
+export function getThermostatZonesWithData(): ThermostatZoneWithData[] {
+  const { thermostats, thermostatZones, areas, rooms } = useDeviceStore.getState();
+  
+  // Build a map of roomId to area name for sorting thermostats
+  const roomToAreaMap = new Map<string, string>();
+  areas.forEach(area => {
+    area.roomIds.forEach(roomId => {
+      roomToAreaMap.set(roomId, area.name);
+    });
+  });
+  
+  // Sort thermostats by their area order for Whole House display
+  const sortedThermostatIds = [...thermostats]
+    .sort((a, b) => {
+      const areaA = a.roomId ? roomToAreaMap.get(a.roomId) || '' : '';
+      const areaB = b.roomId ? roomToAreaMap.get(b.roomId) || '' : '';
+      const orderA = getZoneOrder(areaA);
+      const orderB = getZoneOrder(areaB);
+      if (orderA !== orderB) return orderA - orderB;
+      // Secondary sort by room name
+      const roomA = rooms.find(r => r.id === a.roomId)?.name || a.name;
+      const roomB = rooms.find(r => r.id === b.roomId)?.name || b.name;
+      return roomA.localeCompare(roomB);
+    })
+    .map(t => t.id);
+  
+  // Create "Whole House" zone (always first) with sorted thermostat IDs
+  const wholeHouseZone: ThermostatZone = {
+    id: "whole-house",
+    name: "Whole House",
+    thermostatIds: sortedThermostatIds,
+    isBuiltIn: true,
+  };
+  
+  // Create area-based zones
+  const areaZones: ThermostatZone[] = areas.map(area => {
+    // Find thermostats in rooms that belong to this area
+    const areaRoomIds = area.roomIds;
+    const zoneThermostatIds = thermostats
+      .filter(t => t.roomId && areaRoomIds.includes(t.roomId))
+      .filter(t => !isFloorHeat(t)) // Exclude floor heat from zone counts
+      .map(t => t.id);
+    
+    return {
+      id: area.id,
+      name: area.name,
+      thermostatIds: zoneThermostatIds,
+      isBuiltIn: true,
+    };
+  }).filter(zone => zone.thermostatIds.length > 0); // Only include zones with thermostats
+  
+  // Sort area zones by the defined order
+  areaZones.sort((a, b) => getZoneOrder(a.name) - getZoneOrder(b.name));
+  
+  // Combine with custom zones (Whole House first, then sorted area zones, then custom)
+  const allZones = [wholeHouseZone, ...areaZones, ...thermostatZones];
+  
+  // Compute data for each zone
+  return allZones.map(zone => {
+    // For Whole House, preserve the sorted order; for others, sort by area then name
+    let zoneThermostats = thermostats.filter(t => zone.thermostatIds.includes(t.id));
+    
+    if (zone.id === "whole-house") {
+      // Sort according to the pre-sorted thermostatIds order
+      zoneThermostats = zone.thermostatIds
+        .map(id => thermostats.find(t => t.id === id))
+        .filter((t): t is Thermostat => t !== undefined);
+    }
+    
+    const mainThermostats = zoneThermostats.filter(t => !isFloorHeat(t));
+    
+    // Calculate averages from main thermostats only
+    const activeThermostats = mainThermostats.filter(t => t.mode !== 'off');
+    const avgCurrentTemp = mainThermostats.length > 0
+      ? Math.round(mainThermostats.reduce((sum, t) => sum + t.currentTemp, 0) / mainThermostats.length)
+      : 0;
+    
+    const avgSetPoint = activeThermostats.length > 0
+      ? Math.round(activeThermostats.reduce((sum, t) => {
+          return sum + (t.mode === 'heat' ? t.heatSetPoint : t.coolSetPoint);
+        }, 0) / activeThermostats.length)
+      : 70;
+    
+    // Find dominant mode (most common)
+    const modeCounts: Record<ThermostatMode, number> = { off: 0, heat: 0, cool: 0, auto: 0 };
+    mainThermostats.forEach(t => modeCounts[t.mode]++);
+    const dominantMode = (Object.entries(modeCounts) as [ThermostatMode, number][])
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || 'off';
+    
+    // Find dominant fan mode
+    const fanModeCounts: Record<FanMode, number> = { auto: 0, on: 0 };
+    mainThermostats.forEach(t => fanModeCounts[t.fanMode]++);
+    const dominantFanMode = (Object.entries(fanModeCounts) as [FanMode, number][])
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || 'auto';
+    
+    return {
+      zone,
+      thermostats: zoneThermostats,
+      avgCurrentTemp,
+      avgSetPoint,
+      dominantMode,
+      dominantFanMode,
+      activeCount: activeThermostats.length,
+    };
+  });
+}
+
+// Set mode for all thermostats in a zone
+export async function setZoneThermostatMode(
+  zoneId: string,
+  mode: ThermostatMode
+): Promise<boolean> {
+  const headers = useAuthStore.getState().getAuthHeaders();
+  const { thermostats, updateThermostat } = useDeviceStore.getState();
+  const zones = getThermostatZonesWithData();
+  const zone = zones.find(z => z.zone.id === zoneId);
+  
+  if (!zone) return false;
+  
+  // Get main thermostats in zone (not floor heat)
+  const zoneMainThermostats = zone.thermostats.filter(t => !isFloorHeat(t));
+  const zoneFloorHeat = zone.thermostats.filter(t => isFloorHeat(t));
+  
+  // Floor heat mode (only heat or off)
+  const floorHeatMode: ThermostatMode = mode === 'heat' ? 'heat' : 'off';
+  
+  // Optimistic updates
+  zoneMainThermostats.forEach(t => updateThermostat(t.id, { mode }));
+  zoneFloorHeat.forEach(t => updateThermostat(t.id, { mode: floorHeatMode }));
+  
+  try {
+    // Send mode changes in parallel
+    const results = await Promise.all([
+      ...zoneMainThermostats.map(async (t) => {
+        const response = await fetch("/api/crestron/thermostats", {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: t.id, action: "mode", mode }),
+        });
+        return (await response.json()).success;
+      }),
+      ...zoneFloorHeat.map(async (t) => {
+        const response = await fetch("/api/crestron/thermostats", {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: t.id, action: "mode", mode: floorHeatMode }),
+        });
+        return (await response.json()).success;
+      }),
+    ]);
+    
+    return results.every(Boolean);
+  } catch {
+    return false;
+  }
+}
+
+// Set fan mode for all thermostats in a zone
+export async function setZoneThermostatFanMode(
+  zoneId: string,
+  fanMode: FanMode
+): Promise<boolean> {
+  const headers = useAuthStore.getState().getAuthHeaders();
+  const { updateThermostat } = useDeviceStore.getState();
+  const zones = getThermostatZonesWithData();
+  const zone = zones.find(z => z.zone.id === zoneId);
+  
+  if (!zone) return false;
+  
+  // Only set fan mode on main thermostats (not floor heat)
+  const zoneMainThermostats = zone.thermostats.filter(t => !isFloorHeat(t));
+  
+  // Optimistic updates
+  zoneMainThermostats.forEach(t => updateThermostat(t.id, { fanMode }));
+  
+  try {
+    const results = await Promise.all(
+      zoneMainThermostats.map(async (t) => {
+        const response = await fetch("/api/crestron/thermostats", {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: t.id, action: "fanMode", fanMode }),
+        });
+        return (await response.json()).success;
+      })
+    );
+    
+    return results.every(Boolean);
+  } catch {
+    return false;
+  }
+}
+
+// Set temperature for all thermostats in a zone
+export async function setZoneThermostatTemp(
+  zoneId: string,
+  temperature: number,
+  mode?: ThermostatMode
+): Promise<boolean> {
+  const headers = useAuthStore.getState().getAuthHeaders();
+  const { updateThermostat } = useDeviceStore.getState();
+  const zones = getThermostatZonesWithData();
+  const zone = zones.find(z => z.zone.id === zoneId);
+  
+  if (!zone) return false;
+  
+  const zoneThermostats = zone.thermostats;
+  
+  // Determine setpoint payload based on mode
+  const effectiveMode = mode || zone.dominantMode;
+  const setpointPayload = effectiveMode === "heat" 
+    ? { heatSetPoint: temperature }
+    : effectiveMode === "cool"
+      ? { coolSetPoint: temperature }
+      : { heatSetPoint: temperature, coolSetPoint: temperature };
+  
+  // Optimistic updates
+  zoneThermostats.forEach(t => {
+    const updates: Partial<Thermostat> = {
+      ...setpointPayload,
+    };
+    if (mode) {
+      updates.mode = isFloorHeat(t) ? (mode === 'heat' ? 'heat' : 'off') : mode;
+    }
+    updateThermostat(t.id, updates);
+  });
+  
+  try {
+    // If mode is provided, set mode first
+    if (mode) {
+      const modeResults = await Promise.all(
+        zoneThermostats.map(async (t) => {
+          const thermostatMode = isFloorHeat(t) ? (mode === 'heat' ? 'heat' : 'off') : mode;
+          const response = await fetch("/api/crestron/thermostats", {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ id: t.id, action: "mode", mode: thermostatMode }),
+          });
+          return (await response.json()).success;
+        })
+      );
+      
+      if (!modeResults.every(Boolean)) {
+        console.warn("Some zone thermostat mode changes failed");
+      }
+    }
+    
+    // Set temperature on all thermostats
+    const results = await Promise.all(
+      zoneThermostats.map(async (t) => {
+        const response = await fetch("/api/crestron/thermostats", {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: t.id, action: "setPoint", ...setpointPayload }),
+        });
+        return (await response.json()).success;
+      })
+    );
+    
+    return results.every(Boolean);
+  } catch {
+    return false;
+  }
 }
 
 // Coordinated mode change for room thermostats (syncs main + floor heat)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Thermometer,
   Flame,
@@ -12,12 +12,13 @@ import {
   Fan,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
-import type { Thermostat, ThermostatMode } from "@/lib/crestron/types";
-import { setThermostatSetPoint, setThermostatMode } from "@/stores/deviceStore";
+import type { Thermostat, ThermostatMode, FanMode } from "@/lib/crestron/types";
+import { setThermostatSetPoint, setThermostatMode, setThermostatFanMode } from "@/stores/deviceStore";
 
 interface ThermostatCardProps {
   thermostat: Thermostat;
   compact?: boolean;
+  isFloorHeatOnly?: boolean;
 }
 
 const modeConfig = {
@@ -27,11 +28,20 @@ const modeConfig = {
   auto: { icon: Wind, color: "#10B981", label: "Auto" },
 };
 
-export function ThermostatCard({ thermostat, compact = false }: ThermostatCardProps) {
+// Floor heat only supports Off and Heat modes
+const floorHeatModes: ThermostatMode[] = ["off", "heat"];
+
+export function ThermostatCard({ thermostat, compact = false, isFloorHeatOnly = false }: ThermostatCardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const mode = thermostat.mode || "off";
   const config = modeConfig[mode];
   const ModeIcon = config.icon;
+  
+  // Use a ref to always access the latest thermostat data in callbacks
+  const thermostatRef = useRef(thermostat);
+  useEffect(() => {
+    thermostatRef.current = thermostat;
+  }, [thermostat]);
   
   const currentSetPoint = mode === "heat" 
     ? thermostat.heatSetPoint 
@@ -41,24 +51,41 @@ export function ThermostatCard({ thermostat, compact = false }: ThermostatCardPr
 
   const handleSetPointChange = useCallback(async (delta: number) => {
     setIsUpdating(true);
-    const newSetPoint = currentSetPoint + delta;
     
-    if (mode === "heat") {
-      await setThermostatSetPoint(thermostat.id, newSetPoint, undefined);
-    } else if (mode === "cool") {
-      await setThermostatSetPoint(thermostat.id, undefined, newSetPoint);
+    // Get the latest thermostat data from ref
+    const latest = thermostatRef.current;
+    const latestMode = latest.mode || "off";
+    const latestSetPoint = latestMode === "heat" 
+      ? latest.heatSetPoint 
+      : latestMode === "cool" 
+        ? latest.coolSetPoint 
+        : latest.heatSetPoint;
+    
+    const newSetPoint = latestSetPoint + delta;
+    
+    if (latestMode === "heat") {
+      await setThermostatSetPoint(latest.id, newSetPoint, undefined);
+    } else if (latestMode === "cool") {
+      await setThermostatSetPoint(latest.id, undefined, newSetPoint);
     } else {
-      await setThermostatSetPoint(thermostat.id, newSetPoint, newSetPoint);
+      await setThermostatSetPoint(latest.id, newSetPoint, newSetPoint);
     }
     
     setIsUpdating(false);
-  }, [thermostat.id, mode, currentSetPoint]);
+  }, []);
 
   const handleModeChange = useCallback(async (newMode: ThermostatMode) => {
     setIsUpdating(true);
-    await setThermostatMode(thermostat.id, newMode);
+    await setThermostatMode(thermostatRef.current.id, newMode);
     setIsUpdating(false);
-  }, [thermostat.id]);
+  }, []);
+
+  const handleFanModeChange = useCallback(async (newFanMode: FanMode) => {
+    if (newFanMode === thermostatRef.current.fanMode) return;
+    setIsUpdating(true);
+    await setThermostatFanMode(thermostatRef.current.id, newFanMode);
+    setIsUpdating(false);
+  }, []);
 
   if (compact) {
     return (
@@ -150,8 +177,8 @@ export function ThermostatCard({ thermostat, compact = false }: ThermostatCardPr
       {/* Mode Selection */}
       <div className="mt-6">
         <p className="text-xs font-medium text-[var(--text-secondary)] mb-3">MODE</p>
-        <div className="grid grid-cols-4 gap-2">
-          {(Object.keys(modeConfig) as ThermostatMode[]).map((modeKey) => {
+        <div className={`grid gap-2 ${isFloorHeatOnly ? "grid-cols-2" : "grid-cols-4"}`}>
+          {(isFloorHeatOnly ? floorHeatModes : Object.keys(modeConfig) as ThermostatMode[]).map((modeKey) => {
             const modeItem = modeConfig[modeKey];
             const ModeItemIcon = modeItem.icon;
             const isSelected = mode === modeKey;
@@ -186,37 +213,45 @@ export function ThermostatCard({ thermostat, compact = false }: ThermostatCardPr
         </div>
       </div>
 
-      {/* Fan Mode */}
-      <div className="mt-4 flex items-center justify-between p-3 bg-[var(--surface-hover)] rounded-xl">
-        <div className="flex items-center gap-2">
-          <Fan className="w-4 h-4 text-[var(--text-secondary)]" />
-          <span className="text-sm text-[var(--text-secondary)]">Fan</span>
+      {/* Fan Mode - Not shown for floor heat only */}
+      {!isFloorHeatOnly && (
+        <div className="mt-4 flex items-center justify-between p-3 bg-[var(--surface-hover)] rounded-xl">
+          <div className="flex items-center gap-2">
+            <Fan className="w-4 h-4 text-[var(--text-secondary)]" />
+            <span className="text-sm text-[var(--text-secondary)]">Fan</span>
+          </div>
+          <div className="flex items-center gap-1 bg-[var(--surface)] rounded-lg p-1">
+            <button
+              onClick={() => handleFanModeChange("auto")}
+              disabled={isUpdating || mode === "off"}
+              className={`
+                px-3 py-1 rounded-md text-xs font-medium transition-colors
+                disabled:opacity-50
+                ${thermostat.fanMode === "auto" 
+                  ? "bg-[var(--accent)] text-white" 
+                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+                }
+              `}
+            >
+              Auto
+            </button>
+            <button
+              onClick={() => handleFanModeChange("on")}
+              disabled={isUpdating || mode === "off"}
+              className={`
+                px-3 py-1 rounded-md text-xs font-medium transition-colors
+                disabled:opacity-50
+                ${thermostat.fanMode === "on" 
+                  ? "bg-[var(--accent)] text-white" 
+                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+                }
+              `}
+            >
+              On
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1 bg-[var(--surface)] rounded-lg p-1">
-          <button
-            className={`
-              px-3 py-1 rounded-md text-xs font-medium transition-colors
-              ${thermostat.fanMode === "auto" 
-                ? "bg-[var(--accent)] text-white" 
-                : "text-[var(--text-secondary)]"
-              }
-            `}
-          >
-            Auto
-          </button>
-          <button
-            className={`
-              px-3 py-1 rounded-md text-xs font-medium transition-colors
-              ${thermostat.fanMode === "on" 
-                ? "bg-[var(--accent)] text-white" 
-                : "text-[var(--text-secondary)]"
-              }
-            `}
-          >
-            On
-          </button>
-        </div>
-      </div>
+      )}
     </Card>
   );
 }

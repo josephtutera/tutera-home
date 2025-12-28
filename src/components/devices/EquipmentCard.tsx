@@ -166,3 +166,4 @@ export function EquipmentCard({ equipment, compact = false, roomName }: Equipmen
 
 export default EquipmentCard;
 
+

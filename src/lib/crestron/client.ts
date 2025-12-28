@@ -215,18 +215,34 @@ export class CrestronClient {
   async setThermostatMode(
     payload: ThermostatModePayload
   ): Promise<ApiResponse<void>> {
+    // Capitalize mode for Crestron API (e.g., "heat" -> "Heat")
+    const capitalizedMode = payload.mode.charAt(0).toUpperCase() + payload.mode.slice(1).toLowerCase();
+    
+    const crestronPayload = {
+      id: Number(payload.id),  // Convert string ID to number
+      mode: capitalizedMode,
+    };
+    
     return this.request<void>(CRESTRON_ENDPOINTS.THERMOSTAT_MODE, {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(crestronPayload),
     });
   }
 
   async setThermostatFanMode(
     payload: ThermostatFanModePayload
   ): Promise<ApiResponse<void>> {
+    // Capitalize fan mode for Crestron API (e.g., "auto" -> "Auto")
+    const capitalizedFanMode = payload.fanMode.charAt(0).toUpperCase() + payload.fanMode.slice(1).toLowerCase();
+    
+    const crestronPayload = {
+      id: Number(payload.id),  // Convert string ID to number
+      fanMode: capitalizedFanMode,
+    };
+    
     return this.request<void>(CRESTRON_ENDPOINTS.THERMOSTAT_FAN_MODE, {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(crestronPayload),
     });
   }
 

@@ -13,12 +13,13 @@ import {
   Zap,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
-import type { ThermostatPair, ThermostatMode } from "@/lib/crestron/types";
+import type { ThermostatPair, ThermostatMode, FanMode } from "@/lib/crestron/types";
 import { isTemperatureSatisfied } from "@/lib/crestron/types";
 import { 
   setThermostatSetPoint, 
   setRoomThermostatMode,
   setFloorHeatMode,
+  setThermostatFanMode,
 } from "@/stores/deviceStore";
 
 interface ThermostatRoomGroupProps {
@@ -96,6 +97,13 @@ export function ThermostatRoomGroup({ pair }: ThermostatRoomGroupProps) {
     
     setIsUpdating(false);
   }, [floorHeat, mainThermostat.id]);
+
+  const handleFanModeChange = useCallback(async (newFanMode: FanMode) => {
+    if (newFanMode === mainThermostat.fanMode) return;
+    setIsUpdating(true);
+    await setThermostatFanMode(mainThermostat.id, newFanMode);
+    setIsUpdating(false);
+  }, [mainThermostat.id, mainThermostat.fanMode]);
 
   return (
     <Card padding="lg" className="bg-gradient-to-br from-[var(--climate-color)]/5 to-transparent">
@@ -254,22 +262,28 @@ export function ThermostatRoomGroup({ pair }: ThermostatRoomGroupProps) {
         </div>
         <div className="flex items-center gap-1 bg-[var(--surface)] rounded-lg p-1">
           <button
+            onClick={() => handleFanModeChange("auto")}
+            disabled={isUpdating || mode === "off"}
             className={`
               px-3 py-1 rounded-md text-xs font-medium transition-colors
+              disabled:opacity-50
               ${mainThermostat.fanMode === "auto" 
                 ? "bg-[var(--accent)] text-white" 
-                : "text-[var(--text-secondary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
               }
             `}
           >
             Auto
           </button>
           <button
+            onClick={() => handleFanModeChange("on")}
+            disabled={isUpdating || mode === "off"}
             className={`
               px-3 py-1 rounded-md text-xs font-medium transition-colors
+              disabled:opacity-50
               ${mainThermostat.fanMode === "on" 
                 ? "bg-[var(--accent)] text-white" 
-                : "text-[var(--text-secondary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
               }
             `}
           >

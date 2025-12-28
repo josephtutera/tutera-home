@@ -111,6 +111,25 @@ export interface ThermostatPair {
   floorHeat: Thermostat | null;     // The "Floor Heat" thermostat (Heat/Off only)
 }
 
+// Thermostat Zone (for grouping thermostats by floor, wing, etc.)
+export interface ThermostatZone {
+  id: string;                       // Zone ID (e.g., "2nd-floor", "whole-house")
+  name: string;                     // Display name (e.g., "2nd Floor", "Whole House")
+  thermostatIds: string[];          // Array of thermostat IDs in this zone
+  isBuiltIn?: boolean;              // True for auto-generated zones like "Whole House"
+}
+
+// Thermostat Zone with resolved data
+export interface ThermostatZoneWithData {
+  zone: ThermostatZone;
+  thermostats: Thermostat[];        // Actual thermostat objects
+  avgCurrentTemp: number;           // Average current temperature
+  avgSetPoint: number;              // Average setpoint
+  dominantMode: ThermostatMode;     // Most common mode across thermostats
+  dominantFanMode: FanMode;         // Most common fan mode
+  activeCount: number;              // Number of active (not off) thermostats
+}
+
 // Helper to detect if a thermostat is a floor heat unit
 export function isFloorHeat(thermostat: Thermostat): boolean {
   return thermostat.name.toLowerCase().includes('floor heat');
