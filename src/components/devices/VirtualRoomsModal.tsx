@@ -6,30 +6,33 @@ import { Layers, Plus, Trash2, Edit2, Check, X } from "lucide-react";
 import { Modal, ModalFooter } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { Room, MergedRoom } from "@/lib/crestron/types";
+import type { Room, VirtualRoom, Area } from "@/lib/crestron/types";
 import {
-  createMergedRoom,
-  updateMergedRoom,
-  deleteMergedRoom,
+  createVirtualRoom,
+  updateVirtualRoom,
+  deleteVirtualRoom,
+  useDeviceStore,
 } from "@/stores/deviceStore";
 
-interface MergeRoomsModalProps {
+interface VirtualRoomsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   rooms: Room[];
-  mergedRooms: MergedRoom[];
+  virtualRooms: VirtualRoom[];
 }
 
-export function MergeRoomsModal({
+export function VirtualRoomsModal({
   open,
   onOpenChange,
   rooms,
-  mergedRooms,
-}: MergeRoomsModalProps) {
+  virtualRooms,
+}: VirtualRoomsModalProps) {
+  const { areas } = useDeviceStore();
   const [mode, setMode] = useState<"list" | "create" | "edit">("list");
-  const [editingRoom, setEditingRoom] = useState<MergedRoom | null>(null);
+  const [editingRoom, setEditingRoom] = useState<VirtualRoom | null>(null);
   const [name, setName] = useState("");
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
+  const [selectedAreaId, setSelectedAreaId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +43,7 @@ export function MergeRoomsModal({
       setEditingRoom(null);
       setName("");
       setSelectedRoomIds([]);
+      setSelectedAreaId("");
       setError(null);
     }
   }, [open]);
@@ -49,8 +53,22 @@ export function MergeRoomsModal({
     if (editingRoom) {
       setName(editingRoom.name);
       setSelectedRoomIds(editingRoom.sourceRoomIds);
+      setSelectedAreaId(editingRoom.areaId || "");
     }
   }, [editingRoom]);
+
+  // Auto-select area from first source room when rooms are selected
+  useEffect(() => {
+    if (selectedRoomIds.length > 0 && !selectedAreaId) {
+      for (const roomId of selectedRoomIds) {
+        const room = rooms.find(r => r.id === roomId);
+        if (room?.areaId && room?.areaName) {
+          setSelectedAreaId(room.areaId);
+          break;
+        }
+      }
+    }
+  }, [selectedRoomIds, rooms, selectedAreaId]);
 
   const handleToggleRoom = (roomId: string) => {
     setSelectedRoomIds((prev) =>
@@ -65,35 +83,66 @@ export function MergeRoomsModal({
     setMode("create");
     setName("");
     setSelectedRoomIds([]);
+    setSelectedAreaId("");
     setError(null);
   };
 
-  const handleEdit = (mergedRoom: MergedRoom) => {
+  const handleEdit = (virtualRoom: VirtualRoom) => {
     setMode("edit");
-    setEditingRoom(mergedRoom);
+    setEditingRoom(virtualRoom);
     setError(null);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this merged room?")) return;
+    if (!confirm("Are you sure you want to delete this virtual room?")) return;
     
     setIsLoading(true);
-    const success = await deleteMergedRoom(id);
+    const success = await deleteVirtualRoom(id);
     setIsLoading(false);
     
     if (!success) {
-      setError("Failed to delete merged room");
+      setError("Failed to delete virtual room");
     }
   };
 
   const handleSave = async () => {
     // Validation
     if (!name.trim()) {
-      setError("Please enter a name for the merged room");
+      setError("Please enter a name for the virtual room");
       return;
     }
     if (selectedRoomIds.length < 2) {
-      setError("Please select at least 2 rooms to merge");
+      setError("Please select at least 2 rooms to combine");
+      return;
+    }
+
+    // Try to get area from first source room
+    let areaId: string | undefined;
+    let areaName: string | undefined;
+    
+    for (const roomId of selectedRoomIds) {
+      const room = rooms.find(r => r.id === roomId);
+      if (room?.areaId && room?.areaName) {
+        areaId = room.areaId;
+        areaName = room.areaName;
+        break;
+      }
+    }
+    
+    // If no area found from rooms, use selected area
+    if (!areaId || !areaName) {
+      if (selectedAreaId) {
+        const area = areas.find(a => a.id === selectedAreaId);
+        if (area) {
+          areaId = area.id;
+          areaName = area.name;
+        }
+      }
+    }
+    
+    // If still no area, show error
+    if (!areaId || !areaName) {
+      setError("Please select an area for this virtual room");
       return;
     }
 
@@ -101,27 +150,31 @@ export function MergeRoomsModal({
     setError(null);
 
     if (mode === "create") {
-      const result = await createMergedRoom(name.trim(), selectedRoomIds);
+      const result = await createVirtualRoom(name.trim(), selectedRoomIds, areaId, areaName);
       if (result) {
         setMode("list");
         setName("");
         setSelectedRoomIds([]);
+        setSelectedAreaId("");
       } else {
-        setError("Failed to create merged room");
+        setError("Failed to create virtual room. Please ensure an area is selected.");
       }
     } else if (mode === "edit" && editingRoom) {
-      const result = await updateMergedRoom(
+      const result = await updateVirtualRoom(
         editingRoom.id,
         name.trim(),
-        selectedRoomIds
+        selectedRoomIds,
+        areaId,
+        areaName
       );
       if (result) {
         setMode("list");
         setEditingRoom(null);
         setName("");
         setSelectedRoomIds([]);
+        setSelectedAreaId("");
       } else {
-        setError("Failed to update merged room");
+        setError("Failed to update virtual room");
       }
     }
 
@@ -133,6 +186,7 @@ export function MergeRoomsModal({
     setEditingRoom(null);
     setName("");
     setSelectedRoomIds([]);
+    setSelectedAreaId("");
     setError(null);
   };
 
@@ -145,15 +199,15 @@ export function MergeRoomsModal({
       onOpenChange={onOpenChange}
       title={
         mode === "list"
-          ? "Merged Rooms"
+          ? "Virtual Rooms"
           : mode === "create"
-          ? "Create Merged Room"
-          : "Edit Merged Room"
+          ? "Create Virtual Room"
+          : "Edit Virtual Room"
       }
       description={
         mode === "list"
           ? "Combine multiple rooms into one view"
-          : "Select rooms to merge and give it a name"
+          : "Select rooms to combine and give it a name"
       }
       size="lg"
     >
@@ -166,24 +220,24 @@ export function MergeRoomsModal({
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.2 }}
           >
-            {/* List of existing merged rooms */}
+            {/* List of existing virtual rooms */}
             <div className="space-y-3 max-h-[400px] overflow-y-auto">
-              {mergedRooms.length === 0 ? (
+              {virtualRooms.length === 0 ? (
                 <div className="text-center py-8">
                   <div className="w-12 h-12 rounded-xl bg-[var(--surface-hover)] flex items-center justify-center mx-auto mb-3">
                     <Layers className="w-6 h-6 text-[var(--text-tertiary)]" />
                   </div>
                   <p className="text-[var(--text-secondary)] mb-1">
-                    No merged rooms yet
+                    No virtual rooms yet
                   </p>
                   <p className="text-sm text-[var(--text-tertiary)]">
                     Create one to combine multiple rooms
                   </p>
                 </div>
               ) : (
-                mergedRooms.map((mergedRoom) => (
+                virtualRooms.map((virtualRoom) => (
                   <Card
-                    key={mergedRoom.id}
+                    key={virtualRoom.id}
                     padding="md"
                     className="flex items-center justify-between"
                   >
@@ -193,25 +247,30 @@ export function MergeRoomsModal({
                       </div>
                       <div>
                         <p className="font-medium text-[var(--text-primary)]">
-                          {mergedRoom.name}
+                          {virtualRoom.name}
                         </p>
                         <p className="text-sm text-[var(--text-tertiary)]">
-                          {mergedRoom.sourceRoomIds
+                          {virtualRoom.sourceRoomIds
                             .map(getRoomName)
                             .join(" + ")}
+                          {virtualRoom.areaName && (
+                            <span className="ml-2 text-xs text-[var(--text-tertiary)]">
+                              • {virtualRoom.areaName}
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => handleEdit(mergedRoom)}
+                        onClick={() => handleEdit(virtualRoom)}
                         className="p-2 rounded-lg hover:bg-[var(--surface-hover)] transition-colors"
                         title="Edit"
                       >
                         <Edit2 className="w-4 h-4 text-[var(--text-secondary)]" />
                       </button>
                       <button
-                        onClick={() => handleDelete(mergedRoom.id)}
+                        onClick={() => handleDelete(virtualRoom.id)}
                         className="p-2 rounded-lg hover:bg-red-50 transition-colors"
                         title="Delete"
                         disabled={isLoading}
@@ -233,7 +292,7 @@ export function MergeRoomsModal({
                 leftIcon={<Plus className="w-4 h-4" />}
                 onClick={handleCreate}
               >
-                Create Merged Room
+                Create Virtual Room
               </Button>
             </ModalFooter>
           </motion.div>
@@ -272,7 +331,7 @@ export function MergeRoomsModal({
               {/* Room Selection */}
               <div>
                 <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                  Select Rooms to Merge ({selectedRoomIds.length} selected)
+                  Select Rooms to Combine ({selectedRoomIds.length} selected)
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[250px] overflow-y-auto p-1">
                   {rooms.map((room) => {
@@ -299,6 +358,36 @@ export function MergeRoomsModal({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Area Selection */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+                  Area {!selectedAreaId && <span className="text-red-500">*</span>}
+                </label>
+                <select
+                  value={selectedAreaId}
+                  onChange={(e) => {
+                    setSelectedAreaId(e.target.value);
+                    setError(null);
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-[var(--border)]
+                    bg-[var(--background)] text-[var(--text-primary)]
+                    focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent
+                    transition-all duration-200"
+                >
+                  <option value="">Select an area...</option>
+                  {areas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {area.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedRoomIds.length > 0 && !selectedAreaId && (
+                  <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                    Area will be auto-selected from first source room if available
+                  </p>
+                )}
               </div>
 
               {/* Error Message */}
@@ -330,5 +419,5 @@ export function MergeRoomsModal({
   );
 }
 
-export default MergeRoomsModal;
+export default VirtualRoomsModal;
 

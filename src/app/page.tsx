@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
-import { BottomNavigation, RoomTabs } from "@/components/layout/Navigation";
+import { BottomNavigation } from "@/components/layout/Navigation";
 import { Card } from "@/components/ui/Card";
 import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { LightCard, LightGroupControl } from "@/components/devices/LightCard";
@@ -28,13 +28,12 @@ import { SceneGrid } from "@/components/devices/SceneCard";
 import { LockAllButton } from "@/components/devices/LockCard";
 import { SensorSummary } from "@/components/devices/SensorCard";
 import { EquipmentCard } from "@/components/devices/EquipmentCard";
-import { MergeRoomsModal } from "@/components/devices/MergeRoomsModal";
 import { RoomStatusTile } from "@/components/devices/RoomStatusTile";
 import { RoomZoneControl } from "@/components/devices/RoomZoneControl";
 import { separateLightsAndEquipment } from "@/lib/crestron/types";
 import { QuickActionsBar } from "@/components/layout/QuickActions";
 import { useAuthStore } from "@/stores/authStore";
-import { useDeviceStore, fetchAllData, moveRoomToArea, createArea, getRoomsWithStatus, getRoomZonesWithData } from "@/stores/deviceStore";
+import { useDeviceStore, fetchAllData, getRoomsWithStatus, getRoomZonesWithData } from "@/stores/deviceStore";
 import { useWeatherStore, fetchWeather } from "@/stores/weatherStore";
 
 // Animation variants
@@ -59,7 +58,7 @@ export default function Dashboard() {
   const { 
     areas,
     rooms, 
-    mergedRooms,
+    virtualRooms,
     lights, 
     shades, 
     scenes, 
@@ -69,9 +68,7 @@ export default function Dashboard() {
     isLoading,
   } = useDeviceStore();
   
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [roomViewMode, setRoomViewMode] = useState<"zones" | "rooms">("zones");
   const [expandedZoneId, setExpandedZoneId] = useState<string | null>("whole-house");
   
@@ -89,83 +86,28 @@ export default function Dashboard() {
     }
   }, [isConnected, router]);
 
-  // Check if selected room is a merged room
-  const isMergedRoom = selectedRoom?.startsWith("merged-");
-  const selectedMergedRoom = isMergedRoom 
-    ? mergedRooms.find(mr => mr.id === selectedRoom) 
-    : null;
-  
-  // Get target room IDs for filtering (supports merged rooms)
-  const targetRoomIds = useMemo(() => 
-    isMergedRoom && selectedMergedRoom
-      ? selectedMergedRoom.sourceRoomIds
-      : selectedRoom 
-        ? [selectedRoom]
-        : null,
-    [isMergedRoom, selectedMergedRoom, selectedRoom]
-  );
-
-  // Filter devices by room(s)
-  const allFilteredLights = useMemo(() => {
-    if (!targetRoomIds) return lights;
-    return lights.filter(l => l.roomId && targetRoomIds.includes(l.roomId));
-  }, [lights, targetRoomIds]);
-  
   // Separate actual lights from equipment controls (Fan, Fountain, Heater, etc.)
   const { actualLights: filteredLights, equipment: filteredEquipment } = useMemo(
-    () => separateLightsAndEquipment(allFilteredLights),
-    [allFilteredLights]
+    () => separateLightsAndEquipment(lights),
+    [lights]
   );
   
-  const filteredShades = targetRoomIds
-    ? shades.filter(s => s.roomId && targetRoomIds.includes(s.roomId))
-    : shades;
-  
-  // Get display name for selected room
-  const selectedRoomName = isMergedRoom && selectedMergedRoom
-    ? selectedMergedRoom.name
-    : rooms.find(r => r.id === selectedRoom)?.name;
-
-  // Create room ID to name lookup for merged room views
+  // Create room ID to name lookup
   const roomNameMap = useMemo(() => {
     const map = new Map<string, string>();
     rooms.forEach(room => map.set(room.id, room.name));
+    // Add virtual rooms to the map
+    virtualRooms.forEach(virtualRoom => {
+      map.set(virtualRoom.id, virtualRoom.name);
+    });
     return map;
-  }, [rooms]);
+  }, [rooms, virtualRooms]);
 
   // Helper to get room name by ID
   const getRoomName = (roomId: string | undefined) => roomId ? roomNameMap.get(roomId) : undefined;
 
-  // Group shades by room for merged view
-  const shadesByRoom = useMemo(() => {
-    if (!isMergedRoom || !selectedMergedRoom) return null;
-    
-    const grouped = new Map<string, typeof filteredShades>();
-    filteredShades.forEach(shade => {
-      if (shade.roomId) {
-        const existing = grouped.get(shade.roomId) || [];
-        existing.push(shade);
-        grouped.set(shade.roomId, existing);
-      }
-    });
-    
-    // Convert to array sorted by room name
-    return Array.from(grouped.entries())
-      .map(([roomId, shades]) => ({
-        roomId,
-        roomName: roomNameMap.get(roomId) || roomId,
-        shades,
-      }))
-      .sort((a, b) => a.roomName.localeCompare(b.roomName));
-  }, [isMergedRoom, selectedMergedRoom, filteredShades, roomNameMap]);
-
-  // Determine if we should show equipment grouped by room
-  const shouldGroupEquipment = selectedRoom === null || isMergedRoom;
-
-  // Group equipment by room for merged view or "All Rooms" view
+  // Group equipment by room
   const equipmentByRoom = useMemo(() => {
-    // Only group when viewing All Rooms or a merged room
-    if (!shouldGroupEquipment) return null;
     if (filteredEquipment.length === 0) return null;
     
     const grouped = new Map<string, typeof filteredEquipment>();
@@ -188,7 +130,7 @@ export default function Dashboard() {
         equipment,
       }))
       .sort((a, b) => a.roomName.localeCompare(b.roomName));
-  }, [shouldGroupEquipment, filteredEquipment, roomNameMap]);
+  }, [filteredEquipment, roomNameMap]);
 
   // Manual refresh handler
   const handleRefresh = async () => {
@@ -323,11 +265,10 @@ export default function Dashboard() {
                   Rooms
                 </h2>
                 <Link
-                  href="/rooms/merge"
-                  className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
+                  href="/rooms/virtual"
+                  className="text-sm text-[var(--accent)] hover:text-[var(--accent)]/80 hover:underline transition-colors"
                 >
-                  <Layers className="w-4 h-4" />
-                  Manage Merged Rooms
+                  Manage Virtual Rooms
                 </Link>
               </div>
               <div className="flex items-center gap-1 p-1 bg-[var(--surface)] rounded-xl">
@@ -405,21 +346,6 @@ export default function Dashboard() {
           </motion.section>
         )}
 
-        {/* Room Filter */}
-        {rooms.length > 0 && (
-          <div className="mb-6">
-            <RoomTabs
-              rooms={rooms}
-              mergedRooms={mergedRooms}
-              areas={areas}
-              activeRoom={selectedRoom}
-              onRoomChange={setSelectedRoom}
-              onManageMergedRooms={() => setIsMergeModalOpen(true)}
-              onMoveRoomToArea={moveRoomToArea}
-              onCreateArea={createArea}
-            />
-          </div>
-        )}
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -493,37 +419,12 @@ export default function Dashboard() {
                   </h2>
                 </div>
                 {/* Show grouped by room when "All Rooms" is selected */}
-                {selectedRoom === null ? (
-                  <LightsByRoom 
-                    lights={lights} 
-                    rooms={rooms}
-                    maxLightsPerRoom={4}
-                    showUnassigned
-                  />
-                ) : isMergedRoom && selectedMergedRoom ? (
-                  /* Show devices grouped by source room for merged rooms */
-                  <LightsByRoom 
-                    lights={filteredLights} 
-                    rooms={rooms.filter(r => selectedMergedRoom.sourceRoomIds.includes(r.id))}
-                    maxLightsPerRoom={6}
-                    showUnassigned={false}
-                  />
-                ) : (
-                  /* Show flat list when a specific room is selected */
-                  <div className="space-y-3">
-                    <LightGroupControl 
-                      lights={filteredLights} 
-                      roomName={selectedRoomName}
-                    />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {filteredLights.map((light) => (
-                        <motion.div key={light.id} initial={{ opacity: 1, y: 0 }} animate={{ opacity: 1, y: 0 }}>
-                          <LightCard light={light} compact />
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <LightsByRoom 
+                  lights={lights} 
+                  rooms={rooms}
+                  maxLightsPerRoom={4}
+                  showUnassigned
+                />
               </motion.section>
             )}
 
@@ -540,7 +441,7 @@ export default function Dashboard() {
                     Equipment ({filteredEquipment.length})
                   </h2>
                 </div>
-                {shouldGroupEquipment && equipmentByRoom && equipmentByRoom.length > 0 ? (
+                {equipmentByRoom && equipmentByRoom.length > 0 ? (
                   <div className="space-y-4">
                     {equipmentByRoom.map(({ roomId, roomName, equipment }) => (
                       <div key={roomId} className="space-y-2">
@@ -564,36 +465,18 @@ export default function Dashboard() {
             )}
 
             {/* Shades */}
-            {filteredShades.length > 0 && (
+            {shades.length > 0 && (
               <section>
                 <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
                   Shades
                 </h2>
-                {isMergedRoom && shadesByRoom ? (
-                  /* Show shades grouped by room for merged views */
-                  <div className="space-y-4">
-                    {shadesByRoom.map(({ roomId, roomName, shades }) => (
-                      <div key={roomId} className="space-y-2">
-                        <p className="text-sm font-medium text-[var(--text-secondary)]">{roomName}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-2">
-                          {shades.map((shade) => (
-                            <motion.div key={shade.id} variants={itemVariants}>
-                              <ShadeCard shade={shade} compact />
-                            </motion.div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {filteredShades.slice(0, 4).map((shade) => (
-                      <motion.div key={shade.id} variants={itemVariants}>
-                        <ShadeCard shade={shade} compact roomName={selectedRoom ? undefined : getRoomName(shade.roomId)} />
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {shades.slice(0, 4).map((shade) => (
+                    <motion.div key={shade.id} variants={itemVariants}>
+                      <ShadeCard shade={shade} compact roomName={getRoomName(shade.roomId)} />
+                    </motion.div>
+                  ))}
+                </div>
               </section>
             )}
 
@@ -649,14 +532,6 @@ export default function Dashboard() {
 
       <QuickActionsBar />
       <BottomNavigation />
-      
-      {/* Merge Rooms Modal */}
-      <MergeRoomsModal
-        open={isMergeModalOpen}
-        onOpenChange={setIsMergeModalOpen}
-        rooms={rooms}
-        mergedRooms={mergedRooms}
-      />
     </div>
   );
 }

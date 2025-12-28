@@ -5,7 +5,7 @@ import { persist } from "zustand/middleware";
 import type {
   Area,
   Room,
-  MergedRoom,
+  VirtualRoom,
   Light,
   Shade,
   Scene,
@@ -28,7 +28,7 @@ interface DeviceState {
   // Data
   areas: Area[];
   rooms: Room[];
-  mergedRooms: MergedRoom[];
+  virtualRooms: VirtualRoom[];
   lights: Light[];
   shades: Shade[];
   scenes: Scene[];
@@ -48,7 +48,7 @@ interface DeviceState {
   // Actions
   setAreas: (areas: Area[]) => void;
   setRooms: (rooms: Room[]) => void;
-  setMergedRooms: (mergedRooms: MergedRoom[]) => void;
+  setVirtualRooms: (virtualRooms: VirtualRoom[]) => void;
   setLights: (lights: Light[]) => void;
   setShades: (shades: Shade[]) => void;
   setScenes: (scenes: Scene[]) => void;
@@ -77,7 +77,7 @@ export const useDeviceStore = create<DeviceState>()(
     (set) => ({
       areas: [],
       rooms: [],
-      mergedRooms: [],
+      virtualRooms: [],
       lights: [],
       shades: [],
       scenes: [],
@@ -94,7 +94,7 @@ export const useDeviceStore = create<DeviceState>()(
 
       setAreas: (areas) => set({ areas }),
       setRooms: (rooms) => set({ rooms }),
-      setMergedRooms: (mergedRooms) => set({ mergedRooms }),
+      setVirtualRooms: (virtualRooms) => set({ virtualRooms }),
       setLights: (lights) => set({ lights }),
       setShades: (shades) => set({ shades }),
       setScenes: (scenes) => set({ scenes }),
@@ -166,7 +166,7 @@ export const useDeviceStore = create<DeviceState>()(
         set({
           areas: [],
           rooms: [],
-          mergedRooms: [],
+          virtualRooms: [],
           lights: [],
           shades: [],
           scenes: [],
@@ -228,13 +228,13 @@ export async function fetchAllData(isRetryAfterRefresh = false) {
   store.setError(null);
   
   try {
-    // Fetch all data in parallel (including areas and merged rooms from server)
-    const [areasData, roomsData, devicesData, scenesData, mergedRoomsData] = await Promise.all([
+    // Fetch all data in parallel (including areas and virtual rooms from server)
+    const [areasData, roomsData, devicesData, scenesData, virtualRoomsData] = await Promise.all([
       fetchWithAuth("areas"),
       fetchWithAuth("rooms"),
       fetchWithAuth("devices"),
       fetchWithAuth("scenes"),
-      fetch("/api/crestron/merged-rooms").then(res => res.json()),
+      fetch("/api/crestron/virtual-rooms").then(res => res.json()),
     ]);
     
     // Check if all responses indicate potential auth failure (empty data or errors)
@@ -383,9 +383,9 @@ export async function fetchAllData(isRetryAfterRefresh = false) {
       store.setScenes(scenesArray);
     }
     
-    // Process merged rooms from server
-    if (mergedRoomsData.success && Array.isArray(mergedRoomsData.data)) {
-      store.setMergedRooms(mergedRoomsData.data);
+    // Process virtual rooms from server
+    if (virtualRoomsData.success && Array.isArray(virtualRoomsData.data)) {
+      store.setVirtualRooms(virtualRoomsData.data);
     }
     
     // Update timestamp on success
@@ -629,7 +629,15 @@ export async function setThermostatFanMode(id: string, fanMode: FanMode) {
 
 // Get thermostat pairs grouped by room
 export function getThermostatPairs(): ThermostatPair[] {
-  const { thermostats, rooms, areas } = useDeviceStore.getState();
+  const { thermostats, rooms, areas, virtualRooms } = useDeviceStore.getState();
+  
+  // Build a map of roomId to virtual room (if it exists)
+  const roomToVirtualRoomMap = new Map<string, { id: string; name: string }>();
+  virtualRooms.forEach(virtualRoom => {
+    virtualRoom.sourceRoomIds.forEach(sourceRoomId => {
+      roomToVirtualRoomMap.set(sourceRoomId, { id: virtualRoom.id, name: virtualRoom.name });
+    });
+  });
   
   // Build a map of roomId to area name for sorting
   const roomToAreaMap = new Map<string, string>();
@@ -639,40 +647,50 @@ export function getThermostatPairs(): ThermostatPair[] {
     });
   });
   
-  // Group thermostats by roomId
-  const roomGroups = new Map<string, Thermostat[]>();
+  // Group thermostats by roomId (or virtual room if applicable)
+  const roomGroups = new Map<string, { roomId: string; roomName: string; thermostats: Thermostat[] }>();
   
   for (const thermostat of thermostats) {
     if (!thermostat.roomId) continue;
-    const existing = roomGroups.get(thermostat.roomId) || [];
-    existing.push(thermostat);
-    roomGroups.set(thermostat.roomId, existing);
+    
+    // Check if this room is part of a virtual room
+    const virtualRoom = roomToVirtualRoomMap.get(thermostat.roomId);
+    const displayRoomId = virtualRoom ? virtualRoom.id : thermostat.roomId;
+    const displayRoomName = virtualRoom ? virtualRoom.name : (rooms.find(r => r.id === thermostat.roomId)?.name || `Room ${thermostat.roomId}`);
+    
+    const existing = roomGroups.get(displayRoomId);
+    if (existing) {
+      existing.thermostats.push(thermostat);
+    } else {
+      roomGroups.set(displayRoomId, {
+        roomId: displayRoomId,
+        roomName: displayRoomName,
+        thermostats: [thermostat],
+      });
+    }
   }
   
   // Convert to ThermostatPair format
   const pairs: ThermostatPair[] = [];
   
-  for (const [roomId, roomThermostats] of roomGroups) {
-    const room = rooms.find(r => r.id === roomId);
-    const roomName = room?.name || `Room ${roomId}`;
-    
+  for (const group of roomGroups.values()) {
     // Find floor heat and main thermostat
-    const floorHeat = roomThermostats.find(t => isFloorHeat(t)) || null;
-    const mainThermostat = roomThermostats.find(t => !isFloorHeat(t));
+    const floorHeat = group.thermostats.find(t => isFloorHeat(t)) || null;
+    const mainThermostat = group.thermostats.find(t => !isFloorHeat(t));
     
     // If we have a main thermostat, create a pair
     if (mainThermostat) {
       pairs.push({
-        roomId,
-        roomName,
+        roomId: group.roomId,
+        roomName: group.roomName,
         mainThermostat,
         floorHeat,
       });
     } else if (floorHeat) {
       // Room only has floor heat, treat it as the main
       pairs.push({
-        roomId,
-        roomName,
+        roomId: group.roomId,
+        roomName: group.roomName,
         mainThermostat: floorHeat,
         floorHeat: null,
       });
@@ -1215,36 +1233,51 @@ export async function setDoorLockState(id: string, isLocked: boolean) {
   }
 }
 
-// Merged Rooms CRUD operations
+// Virtual Rooms CRUD operations
 
-export async function fetchMergedRooms() {
-  const { setMergedRooms, setError } = useDeviceStore.getState();
+export async function fetchVirtualRooms() {
+  const { setVirtualRooms, setError } = useDeviceStore.getState();
   try {
-    const response = await fetch("/api/crestron/merged-rooms");
+    const response = await fetch("/api/crestron/virtual-rooms");
     const data = await response.json();
     if (data.success && Array.isArray(data.data)) {
-      setMergedRooms(data.data);
+      setVirtualRooms(data.data);
     } else {
-      setError(data.error || "Failed to fetch merged rooms");
+      setError(data.error || "Failed to fetch virtual rooms");
     }
   } catch (error) {
-    setError(error instanceof Error ? error.message : "Failed to fetch merged rooms");
+    setError(error instanceof Error ? error.message : "Failed to fetch virtual rooms");
   }
 }
 
-export async function createMergedRoom(name: string, sourceRoomIds: string[]) {
-  const { setMergedRooms, mergedRooms } = useDeviceStore.getState();
+export async function createVirtualRoom(name: string, sourceRoomIds: string[], areaId?: string, areaName?: string) {
+  const { setVirtualRooms, virtualRooms, rooms } = useDeviceStore.getState();
+  
+  // If area not provided, try to find it from source rooms
+  let finalAreaId = areaId;
+  let finalAreaName = areaName;
+  
+  if (!finalAreaId || !finalAreaName) {
+    for (const roomId of sourceRoomIds) {
+      const room = rooms.find(r => r.id === roomId);
+      if (room?.areaId && room?.areaName) {
+        finalAreaId = room.areaId;
+        finalAreaName = room.areaName;
+        break;
+      }
+    }
+  }
   
   try {
-    const response = await fetch("/api/crestron/merged-rooms", {
+    const response = await fetch("/api/crestron/virtual-rooms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, sourceRoomIds }),
+      body: JSON.stringify({ name, sourceRoomIds, areaId: finalAreaId, areaName: finalAreaName }),
     });
     const data = await response.json();
     if (data.success && data.data) {
-      // Add the new merged room to state
-      setMergedRooms([...mergedRooms, data.data]);
+      // Add the new virtual room to state
+      setVirtualRooms([...virtualRooms, data.data]);
       return data.data;
     }
     return null;
@@ -1253,19 +1286,19 @@ export async function createMergedRoom(name: string, sourceRoomIds: string[]) {
   }
 }
 
-export async function updateMergedRoom(id: string, name?: string, sourceRoomIds?: string[]) {
-  const { setMergedRooms, mergedRooms } = useDeviceStore.getState();
+export async function updateVirtualRoom(id: string, name?: string, sourceRoomIds?: string[], areaId?: string, areaName?: string) {
+  const { setVirtualRooms, virtualRooms } = useDeviceStore.getState();
   
   try {
-    const response = await fetch("/api/crestron/merged-rooms", {
+    const response = await fetch("/api/crestron/virtual-rooms", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, name, sourceRoomIds }),
+      body: JSON.stringify({ id, name, sourceRoomIds, areaId, areaName }),
     });
     const data = await response.json();
     if (data.success && data.data) {
-      // Update the merged room in state
-      setMergedRooms(mergedRooms.map(room => room.id === id ? data.data : room));
+      // Update the virtual room in state
+      setVirtualRooms(virtualRooms.map(room => room.id === id ? data.data : room));
       return data.data;
     }
     return null;
@@ -1274,17 +1307,17 @@ export async function updateMergedRoom(id: string, name?: string, sourceRoomIds?
   }
 }
 
-export async function deleteMergedRoom(id: string) {
-  const { setMergedRooms, mergedRooms } = useDeviceStore.getState();
+export async function deleteVirtualRoom(id: string) {
+  const { setVirtualRooms, virtualRooms } = useDeviceStore.getState();
   
   try {
-    const response = await fetch(`/api/crestron/merged-rooms?id=${encodeURIComponent(id)}`, {
+    const response = await fetch(`/api/crestron/virtual-rooms?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
     const data = await response.json();
     if (data.success) {
-      // Remove the merged room from state
-      setMergedRooms(mergedRooms.filter(room => room.id !== id));
+      // Remove the virtual room from state
+      setVirtualRooms(virtualRooms.filter(room => room.id !== id));
       return true;
     }
     return false;
@@ -1414,6 +1447,7 @@ export interface LightingZoneWithData {
   };
   lights: Light[];
   rooms: Room[];
+  roomGroups: LightingRoomGroup[]; // Lights grouped by room/virtual room
   totalLights: number;
   lightsOn: number;
   avgBrightness: number; // 0-100 percentage
@@ -1431,10 +1465,18 @@ export interface LightingRoomGroup {
 
 // Get lighting zones grouped by area (similar to thermostat zones)
 export function getLightingZonesWithData(): LightingZoneWithData[] {
-  const { lights, areas, rooms } = useDeviceStore.getState();
+  const { lights, areas, rooms, virtualRooms } = useDeviceStore.getState();
   
   // Filter out equipment controls
   const { actualLights } = separateLightsAndEquipment(lights);
+  
+  // Build a map of roomId to virtual room (if it exists)
+  const roomToVirtualRoomMap = new Map<string, { id: string; name: string }>();
+  virtualRooms.forEach(virtualRoom => {
+    virtualRoom.sourceRoomIds.forEach(sourceRoomId => {
+      roomToVirtualRoomMap.set(sourceRoomId, { id: virtualRoom.id, name: virtualRoom.name });
+    });
+  });
   
   // Build a map of roomId to area name
   const roomToAreaMap = new Map<string, string>();
@@ -1443,6 +1485,61 @@ export function getLightingZonesWithData(): LightingZoneWithData[] {
       roomToAreaMap.set(roomId, area.name);
     });
   });
+  
+  // Helper function to group lights by room/virtual room
+  const groupLightsByRoom = (lightsToGroup: Light[]): LightingRoomGroup[] => {
+    const roomGroups = new Map<string, { roomId: string; roomName: string; lights: Light[] }>();
+    
+    for (const light of lightsToGroup) {
+      if (!light.roomId) continue;
+      
+      // Check if this room is part of a virtual room
+      const virtualRoom = roomToVirtualRoomMap.get(light.roomId);
+      const displayRoomId = virtualRoom ? virtualRoom.id : light.roomId;
+      const displayRoomName = virtualRoom ? virtualRoom.name : (rooms.find(r => r.id === light.roomId)?.name || `Room ${light.roomId}`);
+      
+      const existing = roomGroups.get(displayRoomId);
+      if (existing) {
+        existing.lights.push(light);
+      } else {
+        roomGroups.set(displayRoomId, {
+          roomId: displayRoomId,
+          roomName: displayRoomName,
+          lights: [light],
+        });
+      }
+    }
+    
+    // Convert to LightingRoomGroup format
+    const groups: LightingRoomGroup[] = [];
+    for (const group of roomGroups.values()) {
+      const lightsOn = group.lights.filter(l => l.isOn || l.level > 0).length;
+      const avgBrightness = group.lights.length > 0
+        ? Math.round((group.lights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / group.lights.length))
+        : 0;
+      
+      groups.push({
+        roomId: group.roomId,
+        roomName: group.roomName,
+        lights: group.lights,
+        lightsOn,
+        totalLights: group.lights.length,
+        avgBrightness,
+      });
+    }
+    
+    // Sort by area order, then by room name
+    groups.sort((a, b) => {
+      const areaA = roomToAreaMap.get(a.roomId) || '';
+      const areaB = roomToAreaMap.get(b.roomId) || '';
+      const orderA = getZoneOrder(areaA);
+      const orderB = getZoneOrder(areaB);
+      if (orderA !== orderB) return orderA - orderB;
+      return a.roomName.localeCompare(b.roomName);
+    });
+    
+    return groups;
+  };
   
   // Sort lights by area order for Whole House display
   const sortedLightIds = [...actualLights]
@@ -1465,13 +1562,23 @@ export function getLightingZonesWithData(): LightingZoneWithData[] {
     .filter((l): l is Light => l !== undefined);
   
   const wholeHouseRooms = Array.from(new Set(wholeHouseLights.map(l => l.roomId).filter(Boolean)))
-    .map(roomId => rooms.find(r => r.id === roomId))
+    .map(roomId => {
+      const virtualRoom = roomToVirtualRoomMap.get(roomId);
+      if (virtualRoom) {
+        return virtualRooms.find(vr => vr.id === virtualRoom.id) 
+          ? { id: virtualRoom.id, name: virtualRoom.name, areaId: virtualRooms.find(vr => vr.id === virtualRoom.id)?.areaId, areaName: virtualRooms.find(vr => vr.id === virtualRoom.id)?.areaName } as Room
+          : rooms.find(r => r.id === roomId);
+      }
+      return rooms.find(r => r.id === roomId);
+    })
     .filter((r): r is Room => r !== undefined);
   
   const wholeHouseOn = wholeHouseLights.filter(l => l.isOn || l.level > 0).length;
   const wholeHouseAvgBrightness = wholeHouseLights.length > 0
     ? Math.round((wholeHouseLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / wholeHouseLights.length))
     : 0;
+  
+  const wholeHouseRoomGroups = groupLightsByRoom(wholeHouseLights);
   
   const wholeHouseZone: LightingZoneWithData = {
     zone: {
@@ -1480,6 +1587,7 @@ export function getLightingZonesWithData(): LightingZoneWithData[] {
     },
     lights: wholeHouseLights,
     rooms: wholeHouseRooms,
+    roomGroups: wholeHouseRoomGroups,
     totalLights: wholeHouseLights.length,
     lightsOn: wholeHouseOn,
     avgBrightness: wholeHouseAvgBrightness,
@@ -1488,13 +1596,44 @@ export function getLightingZonesWithData(): LightingZoneWithData[] {
   // Create area-based zones
   const areaZones: LightingZoneWithData[] = areas.map(area => {
     const areaRoomIds = area.roomIds;
-    const zoneLights = actualLights.filter(l => l.roomId && areaRoomIds.includes(l.roomId));
-    const zoneRooms = rooms.filter(r => areaRoomIds.includes(r.id));
+    const zoneLights = actualLights.filter(l => {
+      if (!l.roomId) return false;
+      // Check if light's room is in area, or if it's part of a virtual room that's in the area
+      if (areaRoomIds.includes(l.roomId)) return true;
+      const virtualRoom = roomToVirtualRoomMap.get(l.roomId);
+      if (virtualRoom && virtualRooms.find(vr => vr.id === virtualRoom.id && vr.areaId === area.id)) return true;
+      return false;
+    });
+    
+    // Get unique rooms (including virtual rooms)
+    const zoneRoomIds = new Set<string>();
+    zoneLights.forEach(l => {
+      if (l.roomId) {
+        const virtualRoom = roomToVirtualRoomMap.get(l.roomId);
+        if (virtualRoom) {
+          zoneRoomIds.add(virtualRoom.id);
+        } else {
+          zoneRoomIds.add(l.roomId);
+        }
+      }
+    });
+    
+    const zoneRooms = Array.from(zoneRoomIds)
+      .map(roomId => {
+        const virtualRoom = virtualRooms.find(vr => vr.id === roomId);
+        if (virtualRoom) {
+          return { id: virtualRoom.id, name: virtualRoom.name, areaId: virtualRoom.areaId, areaName: virtualRoom.areaName } as Room;
+        }
+        return rooms.find(r => r.id === roomId);
+      })
+      .filter((r): r is Room => r !== undefined);
     
     const zoneOn = zoneLights.filter(l => l.isOn || l.level > 0).length;
     const zoneAvgBrightness = zoneLights.length > 0
       ? Math.round((zoneLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / zoneLights.length))
       : 0;
+    
+    const zoneRoomGroups = groupLightsByRoom(zoneLights);
     
     return {
       zone: {
@@ -1503,6 +1642,7 @@ export function getLightingZonesWithData(): LightingZoneWithData[] {
       },
       lights: zoneLights,
       rooms: zoneRooms,
+      roomGroups: zoneRoomGroups,
       totalLights: zoneLights.length,
       lightsOn: zoneOn,
       avgBrightness: zoneAvgBrightness,
@@ -1518,10 +1658,18 @@ export function getLightingZonesWithData(): LightingZoneWithData[] {
 
 // Get lights grouped by room (for room view)
 export function getLightingRoomGroups(): LightingRoomGroup[] {
-  const { lights, rooms, areas } = useDeviceStore.getState();
+  const { lights, rooms, areas, virtualRooms } = useDeviceStore.getState();
   
   // Filter out equipment controls
   const { actualLights } = separateLightsAndEquipment(lights);
+  
+  // Build a map of roomId to virtual room (if it exists)
+  const roomToVirtualRoomMap = new Map<string, { id: string; name: string }>();
+  virtualRooms.forEach(virtualRoom => {
+    virtualRoom.sourceRoomIds.forEach(sourceRoomId => {
+      roomToVirtualRoomMap.set(sourceRoomId, { id: virtualRoom.id, name: virtualRoom.name });
+    });
+  });
   
   // Build a map of roomId to area name for sorting
   const roomToAreaMap = new Map<string, string>();
@@ -1531,34 +1679,44 @@ export function getLightingRoomGroups(): LightingRoomGroup[] {
     });
   });
   
-  // Group lights by roomId
-  const roomGroups = new Map<string, Light[]>();
+  // Group lights by roomId (or virtual room if applicable)
+  const roomGroups = new Map<string, { roomId: string; roomName: string; lights: Light[] }>();
   
   for (const light of actualLights) {
     if (!light.roomId) continue;
-    const existing = roomGroups.get(light.roomId) || [];
-    existing.push(light);
-    roomGroups.set(light.roomId, existing);
+    
+    // Check if this room is part of a virtual room
+    const virtualRoom = roomToVirtualRoomMap.get(light.roomId);
+    const displayRoomId = virtualRoom ? virtualRoom.id : light.roomId;
+    const displayRoomName = virtualRoom ? virtualRoom.name : (rooms.find(r => r.id === light.roomId)?.name || `Room ${light.roomId}`);
+    
+    const existing = roomGroups.get(displayRoomId);
+    if (existing) {
+      existing.lights.push(light);
+    } else {
+      roomGroups.set(displayRoomId, {
+        roomId: displayRoomId,
+        roomName: displayRoomName,
+        lights: [light],
+      });
+    }
   }
   
   // Convert to LightingRoomGroup format
   const groups: LightingRoomGroup[] = [];
   
-  for (const [roomId, roomLights] of roomGroups) {
-    const room = rooms.find(r => r.id === roomId);
-    const roomName = room?.name || `Room ${roomId}`;
-    
-    const lightsOn = roomLights.filter(l => l.isOn || l.level > 0).length;
-    const avgBrightness = roomLights.length > 0
-      ? Math.round((roomLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / roomLights.length))
+  for (const group of roomGroups.values()) {
+    const lightsOn = group.lights.filter(l => l.isOn || l.level > 0).length;
+    const avgBrightness = group.lights.length > 0
+      ? Math.round((group.lights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / group.lights.length))
       : 0;
     
     groups.push({
-      roomId,
-      roomName,
-      lights: roomLights,
+      roomId: group.roomId,
+      roomName: group.roomName,
+      lights: group.lights,
       lightsOn,
-      totalLights: roomLights.length,
+      totalLights: group.lights.length,
       avgBrightness,
     });
   }
@@ -1592,9 +1750,9 @@ export interface RoomStatus {
   } | null;
 }
 
-// Get all rooms with combined lighting and climate status (includes merged rooms)
+// Get all rooms with combined lighting and climate status (includes virtual rooms)
 export function getRoomsWithStatus(): RoomStatus[] {
-  const { rooms, lights, thermostats, areas, mergedRooms } = useDeviceStore.getState();
+  const { rooms, lights, thermostats, areas, virtualRooms } = useDeviceStore.getState();
   
   // Filter out equipment controls
   const { actualLights } = separateLightsAndEquipment(lights);
@@ -1649,14 +1807,14 @@ export function getRoomsWithStatus(): RoomStatus[] {
     };
   });
   
-  // Add merged rooms as virtual rooms
-  const mergedRoomStatuses: RoomStatus[] = mergedRooms.map(mergedRoom => {
+  // Add virtual rooms
+  const virtualRoomStatuses: RoomStatus[] = virtualRooms.map(virtualRoom => {
     // Aggregate lighting status from all source rooms
     let totalLights = 0;
     let lightsOn = 0;
     let totalBrightness = 0;
     
-    mergedRoom.sourceRoomIds.forEach(roomId => {
+    virtualRoom.sourceRoomIds.forEach(roomId => {
       const lightingGroup = lightingMap.get(roomId);
       if (lightingGroup) {
         totalLights += lightingGroup.totalLights;
@@ -1676,7 +1834,7 @@ export function getRoomsWithStatus(): RoomStatus[] {
     const sourceSetPoints: number[] = [];
     let hasActiveClimate = false;
     
-    mergedRoom.sourceRoomIds.forEach(roomId => {
+    virtualRoom.sourceRoomIds.forEach(roomId => {
       const thermostatPair = thermostatMap.get(roomId);
       if (thermostatPair) {
         sourceTemps.push(thermostatPair.mainThermostat.currentTemp);
@@ -1698,33 +1856,33 @@ export function getRoomsWithStatus(): RoomStatus[] {
       mode: hasActiveClimate ? "auto" : "off",
     } : null;
     
-    // Create a virtual Room object for the merged room
-    const virtualRoom: Room = {
-      id: mergedRoom.id,
-      name: mergedRoom.name,
-      areaId: undefined,
-      areaName: undefined,
+    // Create a virtual Room object for the virtual room
+    const virtualRoomObj: Room = {
+      id: virtualRoom.id,
+      name: virtualRoom.name,
+      areaId: virtualRoom.areaId,
+      areaName: virtualRoom.areaName,
     };
     
     return {
-      room: virtualRoom,
+      room: virtualRoomObj,
       lightingStatus,
       climateStatus,
     };
   });
   
-  // Combine regular rooms and merged rooms
-  const allRoomStatuses = [...roomStatuses, ...mergedRoomStatuses];
+  // Combine regular rooms and virtual rooms
+  const allRoomStatuses = [...roomStatuses, ...virtualRoomStatuses];
   
   // Filter to only rooms with at least lights or climate, then sort
   return allRoomStatuses
     .filter(rs => rs.lightingStatus !== null || rs.climateStatus !== null)
     .sort((a, b) => {
-      // Merged rooms go first
-      const aIsMerged = a.room.id.startsWith("merged-");
-      const bIsMerged = b.room.id.startsWith("merged-");
-      if (aIsMerged && !bIsMerged) return -1;
-      if (!aIsMerged && bIsMerged) return 1;
+      // Virtual rooms go first
+      const aIsVirtual = a.room.id.startsWith("virtual-");
+      const bIsVirtual = b.room.id.startsWith("virtual-");
+      if (aIsVirtual && !bIsVirtual) return -1;
+      if (!aIsVirtual && bIsVirtual) return 1;
       
       // Then sort by area
       const areaA = roomToAreaMap.get(a.room.id) || '';

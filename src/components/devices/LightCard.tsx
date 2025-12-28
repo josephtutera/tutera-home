@@ -1,11 +1,37 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Lightbulb, Sun } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import type { Light } from "@/lib/crestron/types";
 import { setLightState } from "@/stores/deviceStore";
+
+// Helper to get/set last brightness level from localStorage
+const LAST_BRIGHTNESS_KEY = "tutera-last-brightness";
+function getLastBrightness(lightId: string): number | null {
+  try {
+    const stored = localStorage.getItem(LAST_BRIGHTNESS_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      return data[lightId] || null;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+function setLastBrightness(lightId: string, brightness: number): void {
+  try {
+    const stored = localStorage.getItem(LAST_BRIGHTNESS_KEY);
+    const data = stored ? JSON.parse(stored) : {};
+    data[lightId] = brightness;
+    localStorage.setItem(LAST_BRIGHTNESS_KEY, JSON.stringify(data));
+  } catch {
+    // Ignore errors
+  }
+}
 
 interface LightCardProps {
   light: Light;
@@ -126,16 +152,47 @@ export function LightCard({ light, compact = false, roomName }: LightCardProps) 
   const isOn = light.isOn || light.level > 0;
   const isDimmer = light.subType === "dimmer";
 
+  // Track last brightness when light is on
+  useEffect(() => {
+    if (isOn && percent > 0) {
+      setLastBrightness(light.id, percent);
+    }
+  }, [light.id, isOn, percent]);
+
   const handleToggle = useCallback(async (turnOn: boolean) => {
     if (isUpdating) return;
     setIsUpdating(true);
-    if (turnOn) {
-      await setLightState(light.id, 65535, true);
-    } else {
-      await setLightState(light.id, 0, false);
+    try {
+      if (turnOn) {
+        // Get last brightness or use 75% as default
+        const lastBrightness = getLastBrightness(light.id);
+        const targetPercent = lastBrightness !== null ? lastBrightness : 75;
+        const targetLevel = percentToLevel(targetPercent);
+        await setLightState(light.id, targetLevel, true);
+      } else {
+        // Save current brightness before turning off
+        if (percent > 0) {
+          setLastBrightness(light.id, percent);
+        }
+        await setLightState(light.id, 0, false);
+      }
+    } finally {
+      setIsUpdating(false);
     }
-    setIsUpdating(false);
-  }, [light.id, isUpdating]);
+  }, [light.id, isUpdating, percent]);
+
+  // Handle icon click toggle
+  const handleIconClick = useCallback(async (e: React.MouseEvent | React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (isUpdating) return;
+    await handleToggle(!isOn);
+  }, [handleToggle, isOn, isUpdating]);
+  
+  // Handle pointer events on icon to prevent swipe
+  const handleIconPointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+  }, []);
 
   const handleLevelChange = useCallback(async (newPercent: number) => {
     if (isUpdating) return;
@@ -185,7 +242,7 @@ export function LightCard({ light, compact = false, roomName }: LightCardProps) 
           border border-[var(--border-light)] shadow-[var(--shadow)]
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2
           ${isDragging ? "shadow-[var(--shadow-lg)] z-10" : ""}
-          ${isUpdating ? "opacity-70 pointer-events-none" : ""}
+          ${isUpdating ? "opacity-70" : ""}
         `}
       >
         {/* Dynamic background gradient fill - white to yellow */}
@@ -204,25 +261,34 @@ export function LightCard({ light, compact = false, roomName }: LightCardProps) 
         
         {/* Content */}
         <div className="relative p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <motion.div
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <motion.button
+                type="button"
+                onClick={handleIconClick}
+                onPointerDown={handleIconPointerDown}
+                disabled={isUpdating}
                 animate={{
-                  backgroundColor: bgFillPercent > 0 
+                  backgroundColor: isOn
                     ? `rgba(252,211,77,${0.5 + (bgFillPercent / 100) * 0.5})` 
                     : "var(--surface-hover)",
-                  scale: bgFillPercent > 0 ? 1 : 0.95,
+                  scale: isOn ? 1 : 0.95,
                 }}
                 transition={{ duration: 0.2 }}
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 cursor-pointer hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed relative z-10"
+                title={isOn ? "Click to turn off" : "Click to turn on"}
+                style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
               >
-                <Lightbulb className={`w-5 h-5 transition-colors duration-200 ${bgFillPercent > 0 ? "text-white" : "text-[var(--text-tertiary)]"}`} />
-              </motion.div>
-              <div className="min-w-0">
-                <p className="font-medium text-sm text-[var(--text-primary)] truncate">
+                <Lightbulb className={`w-5 h-5 transition-colors duration-200 ${isOn ? "text-yellow-700" : "text-[var(--text-tertiary)]"}`} strokeWidth={2.5} stroke={isOn ? "rgb(161, 98, 7)" : undefined} fill="none" />
+              </motion.button>
+              <div className="min-w-0 flex-1">
+                <p 
+                  className="font-medium text-sm text-[var(--text-primary)] line-clamp-2 break-words leading-tight"
+                  title={light.name}
+                >
                   {light.name}
                 </p>
-                <p className="text-xs text-[var(--text-secondary)]">
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                   {roomName && <span className="text-[var(--text-tertiary)]">{roomName} · </span>}
                   {isDragging ? (
                     <span className="text-[var(--light-color-warm)] font-semibold">{displayPercent}%</span>
@@ -234,7 +300,7 @@ export function LightCard({ light, compact = false, roomName }: LightCardProps) 
             </div>
             
             {/* Percentage indicator */}
-            <div className="flex items-center text-[var(--text-tertiary)]">
+            <div className="flex items-center text-[var(--text-tertiary)] shrink-0">
               <span className={`text-sm font-medium tabular-nums transition-colors ${isDragging ? "text-[var(--light-color-warm)]" : ""}`}>
                 {displayPercent}%
               </span>
@@ -300,17 +366,23 @@ export function LightCard({ light, compact = false, roomName }: LightCardProps) 
       <div className="relative p-4">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <motion.div
+            <motion.button
+              type="button"
+              onClick={handleIconClick}
+              onPointerDown={handleIconPointerDown}
+              disabled={isUpdating}
               animate={{
-                backgroundColor: bgFillPercent > 0 
+                backgroundColor: isOn
                   ? `rgba(252,211,77,${0.5 + (bgFillPercent / 100) * 0.5})` 
                   : "var(--surface-hover)",
-                scale: bgFillPercent > 0 ? 1 : 0.95,
+                scale: isOn ? 1 : 0.95,
               }}
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
+              className="w-12 h-12 rounded-xl flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed relative z-10"
+              title={isOn ? "Click to turn off" : "Click to turn on"}
+              style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
             >
-              <Lightbulb className={`w-6 h-6 transition-colors duration-200 ${bgFillPercent > 0 ? "text-white" : "text-[var(--text-tertiary)]"}`} />
-            </motion.div>
+              <Lightbulb className={`w-6 h-6 transition-colors duration-200 ${isOn ? "text-yellow-600" : "text-[var(--text-tertiary)]"}`} strokeWidth={2.5} />
+            </motion.button>
             <div>
               <CardTitle>{light.name}</CardTitle>
               <p className="text-sm text-[var(--text-secondary)]">
@@ -509,29 +581,10 @@ export function LightGroupControl({ lights, roomName, standalone = true }: Light
       {/* Content */}
       <div className="relative p-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <motion.div
-              animate={{
-                backgroundColor: bgFillPercent > 0 
-                  ? `rgba(252,211,77,${0.4 + (bgFillPercent / 100) * 0.4})` 
-                  : "rgba(252,211,77,0.2)",
-              }}
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-            >
-              <Lightbulb className={`w-5 h-5 transition-colors ${bgFillPercent > 0 ? "text-white" : "text-[var(--light-color)]"}`} />
-            </motion.div>
-            <div>
-              <p className="font-medium text-sm text-[var(--text-primary)]">
-                {roomName ? `${roomName} Lights` : "All Lights"}
-              </p>
-              <p className="text-xs text-[var(--text-secondary)]">
-                {isDragging ? (
-                  <span className="text-[var(--light-color-warm)] font-semibold">{displayPercent}%</span>
-                ) : (
-                  `${onCount} of ${totalLights} on`
-                )}
-              </p>
-            </div>
+          <div>
+            <p className="font-medium text-sm text-[var(--text-primary)]">
+              {roomName ? `${roomName} Lights` : "All Lights"}
+            </p>
           </div>
           
           {/* Percentage display */}

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { LightCard, LightGroupControl } from "@/components/devices/LightCard";
+import { LightingRoomGroup } from "@/components/devices/LightingRoomGroup";
 import type { LightingZoneWithData } from "@/stores/deviceStore";
 
 interface LightingZoneControlProps {
@@ -22,10 +23,35 @@ export function LightingZoneControl({
   expanded = false,
   onToggleExpand 
 }: LightingZoneControlProps) {
-  const { zone, lights, rooms, totalLights, lightsOn, avgBrightness } = zoneData;
+  const { zone, lights, rooms, roomGroups, totalLights, lightsOn, avgBrightness } = zoneData;
   
   const lightsOff = totalLights - lightsOn;
   const onPercentage = totalLights > 0 ? Math.round((lightsOn / totalLights) * 100) : 0;
+  
+  // Use roomGroups if available, otherwise fall back to grouping lights by roomId
+  const displayRoomGroups = roomGroups && roomGroups.length > 0 
+    ? roomGroups 
+    : (() => {
+        // Fallback: group lights by roomId
+        const grouped = new Map<string, typeof lights>();
+        lights.forEach(light => {
+          if (light.roomId) {
+            const existing = grouped.get(light.roomId) || [];
+            existing.push(light);
+            grouped.set(light.roomId, existing);
+          }
+        });
+        return Array.from(grouped.entries()).map(([roomId, roomLights]) => ({
+          roomId,
+          roomName: rooms.find(r => r.id === roomId)?.name || roomId,
+          lights: roomLights,
+          lightsOn: roomLights.filter(l => l.isOn || l.level > 0).length,
+          totalLights: roomLights.length,
+          avgBrightness: roomLights.length > 0
+            ? Math.round((roomLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / roomLights.length))
+            : 0,
+        }));
+      })();
 
   return (
     <Card padding="lg" className="overflow-hidden">
@@ -93,17 +119,19 @@ export function LightingZoneControl({
             <LightGroupControl lights={lights} roomName={zone.name} standalone={true} />
           </div>
           
-          {/* Lights Grid */}
-          <div>
-            <h4 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
-              All Lights in {zone.name}
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {lights.map((light) => (
-                <LightCard key={light.id} light={light} compact />
-              ))}
+          {/* Room Groups */}
+          {displayRoomGroups.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
+                Lights by Room in {zone.name}
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {displayRoomGroups.map((roomGroup) => (
+                  <LightingRoomGroup key={roomGroup.roomId} group={roomGroup} />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </Card>

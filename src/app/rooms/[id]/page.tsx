@@ -37,21 +37,21 @@ export default function RoomPage() {
   const roomId = params.id as string;
   
   const { isConnected } = useAuthStore();
-  const { rooms, mergedRooms, lights, shades, thermostats, sensors, isLoading } = useDeviceStore();
+  const { rooms, virtualRooms, lights, shades, thermostats, sensors, isLoading } = useDeviceStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Check if this is a merged room
-  const isMergedRoom = roomId.startsWith("merged-");
-  const mergedRoom = isMergedRoom ? mergedRooms.find(mr => mr.id === roomId) : null;
+  // Check if this is a virtual room
+  const isVirtualRoom = roomId.startsWith("virtual-");
+  const virtualRoom = isVirtualRoom ? virtualRooms.find(vr => vr.id === roomId) : null;
   
-  // Find current room (either regular or merged)
-  const room = isMergedRoom 
-    ? (mergedRoom ? { id: mergedRoom.id, name: mergedRoom.name } : null)
+  // Find current room (either regular or virtual)
+  const room = isVirtualRoom 
+    ? (virtualRoom ? { id: virtualRoom.id, name: virtualRoom.name, areaId: virtualRoom.areaId, areaName: virtualRoom.areaName } : null)
     : rooms.find(r => r.id === roomId);
   
   // Get the room IDs to filter devices by
-  const targetRoomIds = isMergedRoom && mergedRoom
-    ? mergedRoom.sourceRoomIds
+  const targetRoomIds = isVirtualRoom && virtualRoom
+    ? virtualRoom.sourceRoomIds
     : [roomId];
   
   // Filter devices by room(s)
@@ -66,15 +66,15 @@ export default function RoomPage() {
     [allRoomLights]
   );
   
-  // Get source room names for display (for merged rooms)
-  const sourceRoomNames = isMergedRoom && mergedRoom
-    ? mergedRoom.sourceRoomIds
+  // Get source room names for display (for virtual rooms)
+  const sourceRoomNames = isVirtualRoom && virtualRoom
+    ? virtualRoom.sourceRoomIds
         .map(id => rooms.find(r => r.id === id)?.name)
         .filter(Boolean)
         .join(" + ")
     : null;
 
-  // Create room ID to name lookup for merged room views
+  // Create room ID to name lookup for virtual room views
   const roomNameMap = useMemo(() => {
     const map = new Map<string, string>();
     rooms.forEach(room => map.set(room.id, room.name));
@@ -84,9 +84,9 @@ export default function RoomPage() {
   // Helper to get room name by ID
   const getRoomName = (roomId: string | undefined) => roomId ? roomNameMap.get(roomId) : undefined;
 
-  // Group devices by source room for merged views
+  // Group devices by source room for virtual views
   const devicesByRoom = useMemo(() => {
-    if (!isMergedRoom || !mergedRoom) return null;
+    if (!isVirtualRoom || !virtualRoom) return null;
 
     // Get unique room IDs from all devices
     const roomIds = new Set<string>();
@@ -106,7 +106,7 @@ export default function RoomPage() {
         sensors: roomSensors.filter(s => s.roomId === roomId),
       }))
       .sort((a, b) => a.roomName.localeCompare(b.roomName));
-  }, [isMergedRoom, mergedRoom, roomLights, roomEquipment, roomShades, roomThermostats, roomSensors, roomNameMap]);
+  }, [isVirtualRoom, virtualRoom, roomLights, roomEquipment, roomShades, roomThermostats, roomSensors, roomNameMap]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -139,7 +139,7 @@ export default function RoomPage() {
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                {isMergedRoom && (
+                {isVirtualRoom && (
                   <Layers className="w-5 h-5 text-purple-500" />
                 )}
                 <h1 className="text-2xl font-semibold text-[var(--text-primary)]">
@@ -169,8 +169,8 @@ export default function RoomPage() {
           animate="show"
           className="space-y-8"
         >
-          {/* Merged Room: Show devices grouped by source room */}
-          {isMergedRoom && devicesByRoom ? (
+          {/* Virtual Room: Show devices grouped by source room */}
+          {isVirtualRoom && devicesByRoom ? (
             devicesByRoom.map((group) => (
               <section key={group.roomId} className="space-y-6">
                 {/* Room Header */}

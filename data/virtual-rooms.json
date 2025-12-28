@@ -1,0 +1,48 @@
+{
+  "virtualRooms": [
+    {
+      "id": "virtual-1766786034925-u7se6xf6z",
+      "name": "Sports Court",
+      "sourceRoomIds": [
+        "52184",
+        "56022"
+      ]
+    },
+    {
+      "id": "virtual-1766787024310-gtj90xnaa",
+      "name": "Upper Level",
+      "sourceRoomIds": [
+        "52185",
+        "52192",
+        "52193",
+        "52194",
+        "52195"
+      ]
+    },
+    {
+      "id": "virtual-1766787107017-0zgwy7qlf",
+      "name": "Lower Level",
+      "sourceRoomIds": [
+        "52015",
+        "52016",
+        "52184",
+        "53851",
+        "52762",
+        "56056",
+        "55788",
+        "52181",
+        "52182",
+        "52183"
+      ]
+    },
+    {
+      "id": "virtual-1766894917278-v0t2ecck8",
+      "name": "Front & Side Porch",
+      "sourceRoomIds": [
+        "54848",
+        "54843"
+      ]
+    }
+  ]
+}
+

@@ -34,11 +34,13 @@ export interface Room {
   areaName?: string;   // Area name for display
 }
 
-// Merged Room (virtual room combining multiple physical rooms)
-export interface MergedRoom {
-  id: string;               // Prefixed with "merged-" to distinguish from real rooms
+// Virtual Room (virtual room combining multiple physical rooms)
+export interface VirtualRoom {
+  id: string;               // Prefixed with "virtual-" to distinguish from real rooms
   name: string;             // User-defined name
   sourceRoomIds: string[];  // Array of real room IDs to combine
+  areaId?: string;          // Area this virtual room belongs to (inherited from source rooms)
+  areaName?: string;         // Area name for display
 }
 
 // Light
@@ -279,8 +281,8 @@ export interface QuickActionsResponse {
   quickActions: QuickAction[];
 }
 
-export interface MergedRoomsResponse {
-  mergedRooms: MergedRoom[];
+export interface VirtualRoomsResponse {
+  virtualRooms: VirtualRoom[];
 }
 
 // Connection Config

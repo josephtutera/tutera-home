@@ -18,7 +18,7 @@ import {
   X,
   Check,
 } from "lucide-react";
-import type { MergedRoom, Area } from "@/lib/crestron/types";
+import type { VirtualRoom, Area } from "@/lib/crestron/types";
 
 const navItems = [
   { href: "/", label: "Home", icon: Home },
@@ -80,11 +80,11 @@ interface RoomTab {
 
 interface RoomTabsProps {
   rooms: RoomTab[];
-  mergedRooms?: MergedRoom[];
+  virtualRooms?: VirtualRoom[];
   areas?: Area[];
   activeRoom: string | null;
   onRoomChange: (roomId: string | null) => void;
-  onManageMergedRooms?: () => void;
+  onManageVirtualRooms?: () => void;
   onMoveRoomToArea?: (roomId: string, roomName: string, sourceAreaId: string | null, targetAreaId: string) => void;
   onCreateArea?: (name: string) => Promise<boolean>;
   roomOrder?: string[];
@@ -233,17 +233,17 @@ function AreaDropZone({
 
 export function RoomTabs({ 
   rooms, 
-  mergedRooms = [], 
+  virtualRooms = [], 
   areas = [],
   activeRoom, 
   onRoomChange, 
-  onManageMergedRooms,
+  onManageVirtualRooms,
   onMoveRoomToArea,
   onCreateArea,
   roomOrder: externalRoomOrder,
   onRoomOrderChange 
 }: RoomTabsProps) {
-  const hasMergedRooms = mergedRooms.length > 0;
+  const hasVirtualRooms = virtualRooms.length > 0;
   const hasAreas = areas.length > 0;
   
   // Internal room order state (used if no external control provided)
@@ -386,9 +386,9 @@ export function RoomTabs({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Merged Rooms Row - includes All Rooms button */}
+      {/* Virtual Rooms Row - includes All Rooms button */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {/* All Rooms button - now in merged row */}
+        {/* All Rooms button - now in virtual row */}
         <button
           onClick={() => onRoomChange(null)}
           className={`
@@ -404,43 +404,43 @@ export function RoomTabs({
           All Rooms
         </button>
         
-        {hasMergedRooms && (
+        {hasVirtualRooms && (
           <>
             <span className="shrink-0 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide px-1">
-              Merged
+              Virtual
             </span>
-            {mergedRooms.map((mergedRoom) => (
+            {virtualRooms.map((virtualRoom) => (
               <button
-                key={mergedRoom.id}
-                onClick={() => onRoomChange(mergedRoom.id)}
+                key={virtualRoom.id}
+                onClick={() => onRoomChange(virtualRoom.id)}
                 className={`
                   shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-full)] text-sm font-medium
                   transition-all duration-200
                   ${
-                    activeRoom === mergedRoom.id
+                    activeRoom === virtualRoom.id
                       ? "bg-gradient-to-r from-[var(--accent)] to-purple-500 text-white"
                       : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] border border-dashed border-[var(--border-light)]"
                   }
                 `}
               >
                 <Layers className="w-3.5 h-3.5" />
-                {mergedRoom.name}
+                {virtualRoom.name}
               </button>
             ))}
           </>
         )}
         
-        {/* Manage Merged Rooms Button */}
-        {onManageMergedRooms && (
+        {/* Manage Virtual Rooms Button */}
+        {onManageVirtualRooms && (
           <button
-            onClick={onManageMergedRooms}
+            onClick={onManageVirtualRooms}
             className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-full)] text-sm font-medium
               bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]
               transition-all duration-200 border border-dashed border-[var(--border-light)]"
-            title="Manage merged rooms"
+            title="Manage virtual rooms"
           >
             <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Merge</span>
+            <span className="hidden sm:inline">Virtual</span>
           </button>
         )}
       </div>
