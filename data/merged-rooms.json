@@ -34,6 +34,14 @@
         "52182",
         "52183"
       ]
+    },
+    {
+      "id": "merged-1766894917278-v0t2ecck8",
+      "name": "Front & Side Porch",
+      "sourceRoomIds": [
+        "54848",
+        "54843"
+      ]
     }
   ]
 }

@@ -10,6 +10,7 @@ import {
   Thermometer,
   Shield,
   Palette,
+  Lightbulb,
   Menu,
   X,
   LogOut,
@@ -22,6 +23,7 @@ import { IconButton } from "@/components/ui/Button";
 const navItems = [
   { href: "/", label: "Home", icon: Home },
   { href: "/climate", label: "Climate", icon: Thermometer },
+  { href: "/lighting", label: "Lighting", icon: Lightbulb },
   { href: "/security", label: "Security", icon: Shield },
   { href: "/scenes", label: "Scenes", icon: Palette },
 ];

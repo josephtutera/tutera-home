@@ -21,7 +21,7 @@ import type {
   ThermostatZoneWithData,
   FanMode,
 } from "@/lib/crestron/types";
-import { isFloorHeat, isTemperatureSatisfied } from "@/lib/crestron/types";
+import { isFloorHeat, isTemperatureSatisfied, isEquipmentControl, separateLightsAndEquipment } from "@/lib/crestron/types";
 import { useAuthStore, refreshAuth } from "./authStore";
 
 interface DeviceState {
@@ -1404,4 +1404,466 @@ export async function deleteArea(areaId: string): Promise<boolean> {
     setAreas(originalAreas);
     return false;
   }
+}
+
+// Lighting zone interface (similar to ThermostatZoneWithData)
+export interface LightingZoneWithData {
+  zone: {
+    id: string;
+    name: string;
+  };
+  lights: Light[];
+  rooms: Room[];
+  totalLights: number;
+  lightsOn: number;
+  avgBrightness: number; // 0-100 percentage
+}
+
+// Lighting room group interface
+export interface LightingRoomGroup {
+  roomId: string;
+  roomName: string;
+  lights: Light[];
+  lightsOn: number;
+  totalLights: number;
+  avgBrightness: number;
+}
+
+// Get lighting zones grouped by area (similar to thermostat zones)
+export function getLightingZonesWithData(): LightingZoneWithData[] {
+  const { lights, areas, rooms } = useDeviceStore.getState();
+  
+  // Filter out equipment controls
+  const { actualLights } = separateLightsAndEquipment(lights);
+  
+  // Build a map of roomId to area name
+  const roomToAreaMap = new Map<string, string>();
+  areas.forEach(area => {
+    area.roomIds.forEach(roomId => {
+      roomToAreaMap.set(roomId, area.name);
+    });
+  });
+  
+  // Sort lights by area order for Whole House display
+  const sortedLightIds = [...actualLights]
+    .sort((a, b) => {
+      const areaA = a.roomId ? roomToAreaMap.get(a.roomId) || '' : '';
+      const areaB = b.roomId ? roomToAreaMap.get(b.roomId) || '' : '';
+      const orderA = getZoneOrder(areaA);
+      const orderB = getZoneOrder(areaB);
+      if (orderA !== orderB) return orderA - orderB;
+      // Secondary sort by room name
+      const roomA = rooms.find(r => r.id === a.roomId)?.name || a.name;
+      const roomB = rooms.find(r => r.id === b.roomId)?.name || b.name;
+      return roomA.localeCompare(roomB);
+    })
+    .map(l => l.id);
+  
+  // Create "Whole House" zone (always first)
+  const wholeHouseLights = sortedLightIds
+    .map(id => actualLights.find(l => l.id === id))
+    .filter((l): l is Light => l !== undefined);
+  
+  const wholeHouseRooms = Array.from(new Set(wholeHouseLights.map(l => l.roomId).filter(Boolean)))
+    .map(roomId => rooms.find(r => r.id === roomId))
+    .filter((r): r is Room => r !== undefined);
+  
+  const wholeHouseOn = wholeHouseLights.filter(l => l.isOn || l.level > 0).length;
+  const wholeHouseAvgBrightness = wholeHouseLights.length > 0
+    ? Math.round((wholeHouseLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / wholeHouseLights.length))
+    : 0;
+  
+  const wholeHouseZone: LightingZoneWithData = {
+    zone: {
+      id: "whole-house",
+      name: "Whole House",
+    },
+    lights: wholeHouseLights,
+    rooms: wholeHouseRooms,
+    totalLights: wholeHouseLights.length,
+    lightsOn: wholeHouseOn,
+    avgBrightness: wholeHouseAvgBrightness,
+  };
+  
+  // Create area-based zones
+  const areaZones: LightingZoneWithData[] = areas.map(area => {
+    const areaRoomIds = area.roomIds;
+    const zoneLights = actualLights.filter(l => l.roomId && areaRoomIds.includes(l.roomId));
+    const zoneRooms = rooms.filter(r => areaRoomIds.includes(r.id));
+    
+    const zoneOn = zoneLights.filter(l => l.isOn || l.level > 0).length;
+    const zoneAvgBrightness = zoneLights.length > 0
+      ? Math.round((zoneLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / zoneLights.length))
+      : 0;
+    
+    return {
+      zone: {
+        id: area.id,
+        name: area.name,
+      },
+      lights: zoneLights,
+      rooms: zoneRooms,
+      totalLights: zoneLights.length,
+      lightsOn: zoneOn,
+      avgBrightness: zoneAvgBrightness,
+    };
+  }).filter(zone => zone.lights.length > 0); // Only include zones with lights
+  
+  // Sort area zones by the defined order
+  areaZones.sort((a, b) => getZoneOrder(a.zone.name) - getZoneOrder(b.zone.name));
+  
+  // Combine: Whole House first, then sorted area zones
+  return [wholeHouseZone, ...areaZones];
+}
+
+// Get lights grouped by room (for room view)
+export function getLightingRoomGroups(): LightingRoomGroup[] {
+  const { lights, rooms, areas } = useDeviceStore.getState();
+  
+  // Filter out equipment controls
+  const { actualLights } = separateLightsAndEquipment(lights);
+  
+  // Build a map of roomId to area name for sorting
+  const roomToAreaMap = new Map<string, string>();
+  areas.forEach(area => {
+    area.roomIds.forEach(roomId => {
+      roomToAreaMap.set(roomId, area.name);
+    });
+  });
+  
+  // Group lights by roomId
+  const roomGroups = new Map<string, Light[]>();
+  
+  for (const light of actualLights) {
+    if (!light.roomId) continue;
+    const existing = roomGroups.get(light.roomId) || [];
+    existing.push(light);
+    roomGroups.set(light.roomId, existing);
+  }
+  
+  // Convert to LightingRoomGroup format
+  const groups: LightingRoomGroup[] = [];
+  
+  for (const [roomId, roomLights] of roomGroups) {
+    const room = rooms.find(r => r.id === roomId);
+    const roomName = room?.name || `Room ${roomId}`;
+    
+    const lightsOn = roomLights.filter(l => l.isOn || l.level > 0).length;
+    const avgBrightness = roomLights.length > 0
+      ? Math.round((roomLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / roomLights.length))
+      : 0;
+    
+    groups.push({
+      roomId,
+      roomName,
+      lights: roomLights,
+      lightsOn,
+      totalLights: roomLights.length,
+      avgBrightness,
+    });
+  }
+  
+  // Sort by area order (same as "By Zone" view), then by room name
+  groups.sort((a, b) => {
+    const areaA = roomToAreaMap.get(a.roomId) || '';
+    const areaB = roomToAreaMap.get(b.roomId) || '';
+    const orderA = getZoneOrder(areaA);
+    const orderB = getZoneOrder(areaB);
+    if (orderA !== orderB) return orderA - orderB;
+    // Secondary sort by room name
+    return a.roomName.localeCompare(b.roomName);
+  });
+  
+  return groups;
+}
+
+// Room status interface for Home page tiles
+export interface RoomStatus {
+  room: Room;
+  lightingStatus: {
+    lightsOn: number;
+    totalLights: number;
+    avgBrightness: number;
+  } | null;
+  climateStatus: {
+    currentTemp: number;
+    setPoint: number;
+    mode: string;
+  } | null;
+}
+
+// Get all rooms with combined lighting and climate status (includes merged rooms)
+export function getRoomsWithStatus(): RoomStatus[] {
+  const { rooms, lights, thermostats, areas, mergedRooms } = useDeviceStore.getState();
+  
+  // Filter out equipment controls
+  const { actualLights } = separateLightsAndEquipment(lights);
+  
+  // Build a map of roomId to area name for sorting
+  const roomToAreaMap = new Map<string, string>();
+  areas.forEach(area => {
+    area.roomIds.forEach(roomId => {
+      roomToAreaMap.set(roomId, area.name);
+    });
+  });
+  
+  // Get lighting groups by room
+  const lightingGroups = getLightingRoomGroups();
+  const lightingMap = new Map<string, typeof lightingGroups[0]>();
+  lightingGroups.forEach(group => {
+    lightingMap.set(group.roomId, group);
+  });
+  
+  // Get thermostat pairs by room
+  const thermostatPairs = getThermostatPairs();
+  const thermostatMap = new Map<string, typeof thermostatPairs[0]>();
+  thermostatPairs.forEach(pair => {
+    thermostatMap.set(pair.roomId, pair);
+  });
+  
+  // Combine data for each regular room
+  const roomStatuses: RoomStatus[] = rooms.map(room => {
+    const lightingGroup = lightingMap.get(room.id);
+    const thermostatPair = thermostatMap.get(room.id);
+    
+    const lightingStatus = lightingGroup ? {
+      lightsOn: lightingGroup.lightsOn,
+      totalLights: lightingGroup.totalLights,
+      avgBrightness: lightingGroup.avgBrightness,
+    } : null;
+    
+    const climateStatus = thermostatPair ? {
+      currentTemp: thermostatPair.mainThermostat.currentTemp,
+      setPoint: thermostatPair.mainThermostat.mode === "heat"
+        ? thermostatPair.mainThermostat.heatSetPoint
+        : thermostatPair.mainThermostat.mode === "cool"
+          ? thermostatPair.mainThermostat.coolSetPoint
+          : thermostatPair.mainThermostat.heatSetPoint,
+      mode: thermostatPair.mainThermostat.mode || "off",
+    } : null;
+    
+    return {
+      room,
+      lightingStatus,
+      climateStatus,
+    };
+  });
+  
+  // Add merged rooms as virtual rooms
+  const mergedRoomStatuses: RoomStatus[] = mergedRooms.map(mergedRoom => {
+    // Aggregate lighting status from all source rooms
+    let totalLights = 0;
+    let lightsOn = 0;
+    let totalBrightness = 0;
+    
+    mergedRoom.sourceRoomIds.forEach(roomId => {
+      const lightingGroup = lightingMap.get(roomId);
+      if (lightingGroup) {
+        totalLights += lightingGroup.totalLights;
+        lightsOn += lightingGroup.lightsOn;
+        totalBrightness += lightingGroup.avgBrightness * lightingGroup.totalLights;
+      }
+    });
+    
+    const lightingStatus = totalLights > 0 ? {
+      lightsOn,
+      totalLights,
+      avgBrightness: Math.round(totalBrightness / totalLights),
+    } : null;
+    
+    // Aggregate climate status from all source rooms
+    const sourceTemps: number[] = [];
+    const sourceSetPoints: number[] = [];
+    let hasActiveClimate = false;
+    
+    mergedRoom.sourceRoomIds.forEach(roomId => {
+      const thermostatPair = thermostatMap.get(roomId);
+      if (thermostatPair) {
+        sourceTemps.push(thermostatPair.mainThermostat.currentTemp);
+        const setPoint = thermostatPair.mainThermostat.mode === "heat"
+          ? thermostatPair.mainThermostat.heatSetPoint
+          : thermostatPair.mainThermostat.mode === "cool"
+            ? thermostatPair.mainThermostat.coolSetPoint
+            : thermostatPair.mainThermostat.heatSetPoint;
+        sourceSetPoints.push(setPoint);
+        if (thermostatPair.mainThermostat.mode && thermostatPair.mainThermostat.mode !== "off") {
+          hasActiveClimate = true;
+        }
+      }
+    });
+    
+    const climateStatus = sourceTemps.length > 0 ? {
+      currentTemp: Math.round(sourceTemps.reduce((sum, t) => sum + t, 0) / sourceTemps.length),
+      setPoint: Math.round(sourceSetPoints.reduce((sum, t) => sum + t, 0) / sourceSetPoints.length),
+      mode: hasActiveClimate ? "auto" : "off",
+    } : null;
+    
+    // Create a virtual Room object for the merged room
+    const virtualRoom: Room = {
+      id: mergedRoom.id,
+      name: mergedRoom.name,
+      areaId: undefined,
+      areaName: undefined,
+    };
+    
+    return {
+      room: virtualRoom,
+      lightingStatus,
+      climateStatus,
+    };
+  });
+  
+  // Combine regular rooms and merged rooms
+  const allRoomStatuses = [...roomStatuses, ...mergedRoomStatuses];
+  
+  // Filter to only rooms with at least lights or climate, then sort
+  return allRoomStatuses
+    .filter(rs => rs.lightingStatus !== null || rs.climateStatus !== null)
+    .sort((a, b) => {
+      // Merged rooms go first
+      const aIsMerged = a.room.id.startsWith("merged-");
+      const bIsMerged = b.room.id.startsWith("merged-");
+      if (aIsMerged && !bIsMerged) return -1;
+      if (!aIsMerged && bIsMerged) return 1;
+      
+      // Then sort by area
+      const areaA = roomToAreaMap.get(a.room.id) || '';
+      const areaB = roomToAreaMap.get(b.room.id) || '';
+      const orderA = getZoneOrder(areaA);
+      const orderB = getZoneOrder(areaB);
+      if (orderA !== orderB) return orderA - orderB;
+      
+      // Finally by room name
+      return a.room.name.localeCompare(b.room.name);
+    });
+}
+
+// Room zone interface for grouping rooms by area
+export interface RoomZoneWithData {
+  zone: {
+    id: string;
+    name: string;
+  };
+  rooms: RoomStatus[];
+  totalRooms: number;
+  // Lighting stats
+  totalLights: number;
+  lightsOn: number;
+  avgBrightness: number;
+  // Climate stats
+  avgCurrentTemp: number;
+  avgSetPoint: number;
+  activeThermostats: number;
+}
+
+// Get rooms grouped by zone/area with combined lighting and climate data
+export function getRoomZonesWithData(): RoomZoneWithData[] {
+  const { areas, rooms } = useDeviceStore.getState();
+  const roomStatuses = getRoomsWithStatus();
+  
+  // Build a map of roomId to area name
+  const roomToAreaMap = new Map<string, string>();
+  areas.forEach(area => {
+    area.roomIds.forEach(roomId => {
+      roomToAreaMap.set(roomId, area.name);
+    });
+  });
+  
+  // Create "Whole House" zone (always first)
+  const wholeHouseRooms = roomStatuses;
+  const wholeHouseTotalLights = wholeHouseRooms.reduce((sum, rs) => sum + (rs.lightingStatus?.totalLights || 0), 0);
+  const wholeHouseLightsOn = wholeHouseRooms.reduce((sum, rs) => sum + (rs.lightingStatus?.lightsOn || 0), 0);
+  const wholeHouseAvgBrightness = wholeHouseRooms
+    .filter(rs => rs.lightingStatus && rs.lightingStatus.totalLights > 0)
+    .reduce((sum, rs) => {
+      const weightedBrightness = (rs.lightingStatus!.avgBrightness * rs.lightingStatus!.totalLights);
+      return sum + weightedBrightness;
+    }, 0) / (wholeHouseTotalLights || 1);
+  
+  const wholeHouseTemps = wholeHouseRooms
+    .filter(rs => rs.climateStatus !== null)
+    .map(rs => rs.climateStatus!.currentTemp);
+  const wholeHouseAvgTemp = wholeHouseTemps.length > 0
+    ? Math.round(wholeHouseTemps.reduce((sum, t) => sum + t, 0) / wholeHouseTemps.length)
+    : 0;
+  
+  const wholeHouseSetPoints = wholeHouseRooms
+    .filter(rs => rs.climateStatus !== null)
+    .map(rs => rs.climateStatus!.setPoint);
+  const wholeHouseAvgSetPoint = wholeHouseSetPoints.length > 0
+    ? Math.round(wholeHouseSetPoints.reduce((sum, t) => sum + t, 0) / wholeHouseSetPoints.length)
+    : 0;
+  
+  const wholeHouseActiveThermostats = wholeHouseRooms.filter(rs => 
+    rs.climateStatus !== null && rs.climateStatus.mode !== "off"
+  ).length;
+  
+  const wholeHouseZone: RoomZoneWithData = {
+    zone: {
+      id: "whole-house",
+      name: "Whole House",
+    },
+    rooms: wholeHouseRooms,
+    totalRooms: wholeHouseRooms.length,
+    totalLights: wholeHouseTotalLights,
+    lightsOn: wholeHouseLightsOn,
+    avgBrightness: Math.round(wholeHouseAvgBrightness),
+    avgCurrentTemp: wholeHouseAvgTemp,
+    avgSetPoint: wholeHouseAvgSetPoint,
+    activeThermostats: wholeHouseActiveThermostats,
+  };
+  
+  // Create area-based zones
+  const areaZones: RoomZoneWithData[] = areas.map(area => {
+    const zoneRooms = roomStatuses.filter(rs => 
+      roomToAreaMap.get(rs.room.id) === area.name
+    );
+    
+    const zoneTotalLights = zoneRooms.reduce((sum, rs) => sum + (rs.lightingStatus?.totalLights || 0), 0);
+    const zoneLightsOn = zoneRooms.reduce((sum, rs) => sum + (rs.lightingStatus?.lightsOn || 0), 0);
+    const zoneAvgBrightness = zoneRooms
+      .filter(rs => rs.lightingStatus && rs.lightingStatus.totalLights > 0)
+      .reduce((sum, rs) => {
+        const weightedBrightness = (rs.lightingStatus!.avgBrightness * rs.lightingStatus!.totalLights);
+        return sum + weightedBrightness;
+      }, 0) / (zoneTotalLights || 1);
+    
+    const zoneTemps = zoneRooms
+      .filter(rs => rs.climateStatus !== null)
+      .map(rs => rs.climateStatus!.currentTemp);
+    const zoneAvgTemp = zoneTemps.length > 0
+      ? Math.round(zoneTemps.reduce((sum, t) => sum + t, 0) / zoneTemps.length)
+      : 0;
+    
+    const zoneSetPoints = zoneRooms
+      .filter(rs => rs.climateStatus !== null)
+      .map(rs => rs.climateStatus!.setPoint);
+    const zoneAvgSetPoint = zoneSetPoints.length > 0
+      ? Math.round(zoneSetPoints.reduce((sum, t) => sum + t, 0) / zoneSetPoints.length)
+      : 0;
+    
+    const zoneActiveThermostats = zoneRooms.filter(rs => 
+      rs.climateStatus !== null && rs.climateStatus.mode !== "off"
+    ).length;
+    
+    return {
+      zone: {
+        id: area.id,
+        name: area.name,
+      },
+      rooms: zoneRooms,
+      totalRooms: zoneRooms.length,
+      totalLights: zoneTotalLights,
+      lightsOn: zoneLightsOn,
+      avgBrightness: Math.round(zoneAvgBrightness),
+      avgCurrentTemp: zoneAvgTemp,
+      avgSetPoint: zoneAvgSetPoint,
+      activeThermostats: zoneActiveThermostats,
+    };
+  }).filter(zone => zone.rooms.length > 0); // Only include zones with rooms
+  
+  // Sort area zones by the defined order
+  areaZones.sort((a, b) => getZoneOrder(a.zone.name) - getZoneOrder(b.zone.name));
+  
+  return [wholeHouseZone, ...areaZones];
 }

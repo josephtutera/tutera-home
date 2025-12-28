@@ -23,6 +23,7 @@ import type { MergedRoom, Area } from "@/lib/crestron/types";
 const navItems = [
   { href: "/", label: "Home", icon: Home },
   { href: "/climate", label: "Climate", icon: Thermometer },
+  { href: "/lighting", label: "Lighting", icon: Lightbulb },
   { href: "/security", label: "Security", icon: Shield },
   { href: "/scenes", label: "Scenes", icon: Palette },
 ];

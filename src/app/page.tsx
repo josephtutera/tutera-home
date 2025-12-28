@@ -12,6 +12,8 @@ import {
   ChevronRight,
   CloudSun,
   Power,
+  Layers,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
@@ -27,10 +29,12 @@ import { LockAllButton } from "@/components/devices/LockCard";
 import { SensorSummary } from "@/components/devices/SensorCard";
 import { EquipmentCard } from "@/components/devices/EquipmentCard";
 import { MergeRoomsModal } from "@/components/devices/MergeRoomsModal";
+import { RoomStatusTile } from "@/components/devices/RoomStatusTile";
+import { RoomZoneControl } from "@/components/devices/RoomZoneControl";
 import { separateLightsAndEquipment } from "@/lib/crestron/types";
 import { QuickActionsBar } from "@/components/layout/QuickActions";
 import { useAuthStore } from "@/stores/authStore";
-import { useDeviceStore, fetchAllData, moveRoomToArea, createArea } from "@/stores/deviceStore";
+import { useDeviceStore, fetchAllData, moveRoomToArea, createArea, getRoomsWithStatus, getRoomZonesWithData } from "@/stores/deviceStore";
 import { useWeatherStore, fetchWeather } from "@/stores/weatherStore";
 
 // Animation variants
@@ -68,6 +72,8 @@ export default function Dashboard() {
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [roomViewMode, setRoomViewMode] = useState<"zones" | "rooms">("zones");
+  const [expandedZoneId, setExpandedZoneId] = useState<string | null>("whole-house");
   
   const { outsideTemp } = useWeatherStore();
 
@@ -199,6 +205,16 @@ export default function Dashboard() {
   const lightsOn = allActualLights.filter(l => l.isOn || l.level > 0).length;
   const unlockedDoors = doorLocks.filter(l => !l.isLocked).length;
 
+  // Get rooms with combined lighting and climate status
+  const roomsWithStatus = useMemo(() => getRoomsWithStatus(), [lights, thermostats, rooms]);
+  
+  // Get room zones with combined lighting and climate data
+  const roomZones = useMemo(() => getRoomZonesWithData(), [lights, thermostats, rooms]);
+  
+  const handleZoneToggle = (zoneId: string) => {
+    setExpandedZoneId(prev => prev === zoneId ? null : zoneId);
+  };
+
   if (!isConnected) {
     return null; // Will redirect
   }
@@ -292,6 +308,102 @@ export default function Dashboard() {
             </Card>
           </motion.div>
         </motion.div>
+
+        {/* Room Status Tiles */}
+        {roomsWithStatus.length > 0 && (
+          <motion.section
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="mb-6"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                  Rooms
+                </h2>
+                <Link
+                  href="/rooms/merge"
+                  className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
+                >
+                  <Layers className="w-4 h-4" />
+                  Manage Merged Rooms
+                </Link>
+              </div>
+              <div className="flex items-center gap-1 p-1 bg-[var(--surface)] rounded-xl">
+                <button
+                  onClick={() => setRoomViewMode("zones")}
+                  className={`
+                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                    transition-all duration-200
+                    ${roomViewMode === "zones"
+                      ? "bg-[var(--accent)] text-white shadow-sm"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+                    }
+                  `}
+                >
+                  <Layers className="w-4 h-4" />
+                  By Zone
+                </button>
+                <button
+                  onClick={() => setRoomViewMode("rooms")}
+                  className={`
+                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                    transition-all duration-200
+                    ${roomViewMode === "rooms"
+                      ? "bg-[var(--accent)] text-white shadow-sm"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+                    }
+                  `}
+                >
+                  <Building2 className="w-4 h-4" />
+                  By Room
+                </button>
+              </div>
+            </div>
+
+            {/* Zone Controls */}
+            {roomViewMode === "zones" && roomZones.length > 0 && (
+              <div className="space-y-4">
+                {roomZones.map((zoneData, index) => (
+                  <motion.div 
+                    key={zoneData.zone.id} 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    layout
+                  >
+                    <RoomZoneControl
+                      zoneData={zoneData}
+                      expanded={expandedZoneId === zoneData.zone.id}
+                      onToggleExpand={() => handleZoneToggle(zoneData.zone.id)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
+            {/* Room-by-Room Tiles */}
+            {roomViewMode === "rooms" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {roomsWithStatus.map((roomStatus, index) => (
+                  <motion.div 
+                    key={roomStatus.room.id} 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <RoomStatusTile
+                      room={roomStatus.room}
+                      lightingStatus={roomStatus.lightingStatus}
+                      climateStatus={roomStatus.climateStatus}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.section>
+        )}
 
         {/* Room Filter */}
         {rooms.length > 0 && (
