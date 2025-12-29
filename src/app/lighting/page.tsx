@@ -36,7 +36,8 @@ export default function LightingPage() {
   
   // View mode: zones (grouped by area) or rooms (individual)
   const [viewMode, setViewMode] = useState<ViewMode>("zones");
-  const [expandedZoneId, setExpandedZoneId] = useState<string | null>("whole-house");
+  const [expandedZoneId, setExpandedZoneId] = useState<string | null>(null);
+  const [expandedRoomIds, setExpandedRoomIds] = useState<Set<string>>(new Set());
   
   // Get lighting zones with computed data
   const lightingZones = useMemo(() => getLightingZonesWithData(), [lights]);
@@ -64,6 +65,16 @@ export default function LightingPage() {
     
   const handleZoneToggle = (zoneId: string) => {
     setExpandedZoneId(prev => prev === zoneId ? null : zoneId);
+  };
+
+  const handleRoomToggle = (roomId: string) => {
+    const newExpanded = new Set(expandedRoomIds);
+    if (newExpanded.has(roomId)) {
+      newExpanded.delete(roomId);
+    } else {
+      newExpanded.add(roomId);
+    }
+    setExpandedRoomIds(newExpanded);
   };
 
   return (
@@ -224,7 +235,11 @@ export default function LightingPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
                     >
-                      <LightingRoomGroup group={group} />
+                      <LightingRoomGroup 
+                        group={group}
+                        expanded={expandedRoomIds.has(group.roomId || '')}
+                        onToggleExpand={() => handleRoomToggle(group.roomId || '')}
+                      />
                     </motion.div>
                   ))}
                 </div>

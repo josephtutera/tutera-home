@@ -25,6 +25,9 @@ export function LightingZoneControl({
 }: LightingZoneControlProps) {
   const { zone, lights, rooms, roomGroups, totalLights, lightsOn, avgBrightness } = zoneData;
   
+  // Track which rooms are expanded within this zone
+  const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
+  
   const lightsOff = totalLights - lightsOn;
   const onPercentage = totalLights > 0 ? Math.round((lightsOn / totalLights) * 100) : 0;
   
@@ -52,6 +55,16 @@ export function LightingZoneControl({
             : 0,
         }));
       })();
+
+  const handleRoomToggle = (roomId: string) => {
+    const newExpanded = new Set(expandedRooms);
+    if (newExpanded.has(roomId)) {
+      newExpanded.delete(roomId);
+    } else {
+      newExpanded.add(roomId);
+    }
+    setExpandedRooms(newExpanded);
+  };
 
   return (
     <Card padding="lg" className="overflow-hidden">
@@ -127,7 +140,12 @@ export function LightingZoneControl({
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {displayRoomGroups.map((roomGroup) => (
-                  <LightingRoomGroup key={roomGroup.roomId} group={roomGroup} />
+                  <LightingRoomGroup 
+                    key={roomGroup.roomId} 
+                    group={roomGroup}
+                    expanded={expandedRooms.has(roomGroup.roomId || '')}
+                    onToggleExpand={() => handleRoomToggle(roomGroup.roomId || '')}
+                  />
                 ))}
               </div>
             </div>
