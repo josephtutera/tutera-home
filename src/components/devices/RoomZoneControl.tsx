@@ -98,7 +98,7 @@ export function RoomZoneControl({
       {/* Expanded Content */}
       {expanded && rooms.length > 0 && (
         <div className="mt-6 pt-6 border-t border-[var(--border-light)]">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {rooms.map((roomStatus) => (
               <RoomStatusTile
                 key={roomStatus.room.id}

@@ -1,13 +1,41 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, RefreshCw, Lightbulb, Blinds, Layers, Power } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { BottomNavigation } from "@/components/layout/Navigation";
-import { LightCard, LightGroupControl } from "@/components/devices/LightCard";
+import { LightCard, LightGroupControl, levelToPercent, percentToLevel } from "@/components/devices/LightCard";
+import { setLightState } from "@/stores/deviceStore";
+import { Card } from "@/components/ui/Card";
+
+// Helper to get/set last brightness level from localStorage
+const LAST_BRIGHTNESS_KEY = "tutera-last-brightness";
+function getLastBrightness(lightId: string): number | null {
+  try {
+    const stored = localStorage.getItem(LAST_BRIGHTNESS_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      return data[lightId] || null;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+function setLastBrightness(lightId: string, brightness: number): void {
+  try {
+    const stored = localStorage.getItem(LAST_BRIGHTNESS_KEY);
+    const data = stored ? JSON.parse(stored) : {};
+    data[lightId] = brightness;
+    localStorage.setItem(LAST_BRIGHTNESS_KEY, JSON.stringify(data));
+  } catch {
+    // Ignore errors
+  }
+}
 import { ShadeCard } from "@/components/devices/ShadeCard";
 import { ThermostatCard } from "@/components/devices/ThermostatCard";
 import { SensorCard } from "@/components/devices/SensorCard";
@@ -65,6 +93,71 @@ export default function RoomPage() {
     () => separateLightsAndEquipment(allRoomLights),
     [allRoomLights]
   );
+
+  // Calculate lighting stats for room header
+  const lightingStats = useMemo(() => {
+    const totalLights = roomLights.length;
+    const lightsOn = roomLights.filter(l => l.isOn || l.level > 0).length;
+    const avgBrightness = totalLights > 0
+      ? Math.round(roomLights.reduce((sum, l) => sum + levelToPercent(l.level), 0) / totalLights)
+      : 0;
+    return { totalLights, lightsOn, avgBrightness };
+  }, [roomLights]);
+
+  const [isUpdatingLights, setIsUpdatingLights] = useState(false);
+  const isLightsOn = lightingStats.lightsOn > 0;
+  const buttonDisabled = isUpdatingLights || roomLights.length === 0;
+
+  // Handle room toggle - save/restore individual light brightness levels
+  const handleRoomToggle = useCallback(async (e?: React.MouseEvent | React.PointerEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (isUpdatingLights || roomLights.length === 0) return;
+    
+    setIsUpdatingLights(true);
+    
+    try {
+      if (isLightsOn) {
+        // Turning off: save each light's current brightness
+        const promises = roomLights.map(async (light) => {
+          const percent = levelToPercent(light.level);
+          if (percent > 0) {
+            setLastBrightness(light.id, percent);
+          }
+          return setLightState(light.id, 0, false);
+        });
+        await Promise.all(promises);
+      } else {
+        // Turning on: restore each light to its last brightness (or 75% default)
+        const promises = roomLights.map(async (light) => {
+          const lastBrightness = getLastBrightness(light.id);
+          const targetPercent = lastBrightness !== null ? lastBrightness : 75;
+          const targetLevel = percentToLevel(targetPercent);
+          return setLightState(light.id, targetLevel, true);
+        });
+        await Promise.all(promises);
+      }
+    } catch (error) {
+      console.error('Error toggling room lights:', error);
+    } finally {
+      setIsUpdatingLights(false);
+    }
+  }, [isLightsOn, roomLights, isUpdatingLights]);
+
+  // Handle icon click toggle
+  const handleIconClick = useCallback(async (e: React.MouseEvent | React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (buttonDisabled) return;
+    await handleRoomToggle(e);
+  }, [handleRoomToggle, buttonDisabled]);
+
+  // Handle pointer events on icon to prevent swipe
+  const handleIconPointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+  }, []);
   
   // Get source room names for display (for virtual rooms)
   const sourceRoomNames = isVirtualRoom && virtualRoom
@@ -276,6 +369,62 @@ export default function RoomPage() {
                       Lights
                     </h2>
                   </div>
+                  
+                  {/* Room Header with Toggle */}
+                  <Card padding="lg" className="bg-gradient-to-br from-yellow-500/5 to-transparent relative mb-3" style={{ cursor: 'default' }}>
+                    <div className="mb-4 relative" style={{ zIndex: 100, isolation: 'isolate', cursor: 'default' }}>
+                      <div className="flex items-center gap-3 mb-2 relative">
+                        <motion.button
+                          type="button"
+                          onClick={handleIconClick}
+                          onPointerDown={handleIconPointerDown}
+                          disabled={buttonDisabled}
+                          animate={{
+                            backgroundColor: isLightsOn
+                              ? "rgba(252,211,77,1)"
+                              : "var(--surface-hover)",
+                            scale: isLightsOn ? 1 : 0.95,
+                          }}
+                          transition={{ duration: 0.2 }}
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 cursor-pointer hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed relative z-10"
+                          title={isLightsOn ? "Click to turn all lights off" : "Click to turn all lights on"}
+                          style={{ 
+                            pointerEvents: 'auto', 
+                            touchAction: 'manipulation',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Lightbulb 
+                            className="w-5 h-5 transition-colors duration-200 pointer-events-none" 
+                            strokeWidth={2.5} 
+                            stroke={isLightsOn ? "#ffffff" : "var(--text-tertiary)"} 
+                            fill="none"
+                            style={{ color: isLightsOn ? "#ffffff" : "var(--text-tertiary)" }}
+                          />
+                        </motion.button>
+                        <div>
+                          <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                            {room?.name}
+                          </h3>
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            {lightingStats.totalLights} {lightingStats.totalLights === 1 ? 'light' : 'lights'}
+                            {lightingStats.lightsOn > 0 && ` • ${lightingStats.lightsOn} on`}
+                            {lightingStats.totalLights - lightingStats.lightsOn > 0 && ` • ${lightingStats.totalLights - lightingStats.lightsOn} off`}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Brightness indicator */}
+                      {lightingStats.lightsOn > 0 && (
+                        <div className="ml-[52px]">
+                          <p className="text-xl font-semibold text-[var(--text-primary)]">
+                            {lightingStats.avgBrightness}% avg brightness
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
                   <div className="space-y-3">
                     <LightGroupControl lights={roomLights} roomName={room?.name} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
