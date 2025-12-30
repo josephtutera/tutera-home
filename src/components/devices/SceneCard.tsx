@@ -13,14 +13,55 @@ import {
   Bed,
   Home,
   Play,
+  Lightbulb,
+  Music,
+  Zap,
+  LucideIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import type { Scene } from "@/lib/crestron/types";
+import type { Scene, SceneSource } from "@/lib/crestron/types";
 import { recallScene } from "@/stores/deviceStore";
+
+// Get display info for scene source with icons
+interface SourceInfo {
+  label: string;
+  color: string;
+  bgColor: string;
+  Icon: LucideIcon;
+}
+
+function getSourceInfo(source?: SceneSource): SourceInfo | null {
+  switch (source) {
+    case 'lutron':
+      return { 
+        label: 'Lutron', 
+        color: '#EAB308',  // Yellow
+        bgColor: '#EAB30820', 
+        Icon: Lightbulb 
+      };
+    case 'crestron':
+      return { 
+        label: 'Crestron', 
+        color: '#6B7280',  // Grey
+        bgColor: '#6B728020', 
+        Icon: Music 
+      };
+    case 'action':
+      return { 
+        label: 'Action', 
+        color: '#3B82F6',  // Blue
+        bgColor: '#3B82F620', 
+        Icon: Zap 
+      };
+    default:
+      return null;
+  }
+}
 
 interface SceneCardProps {
   scene: Scene;
   compact?: boolean;
+  roomName?: string;
 }
 
 // Map scene names to icons (simple heuristic)
@@ -60,11 +101,12 @@ function getSceneColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-export function SceneCard({ scene, compact = false }: SceneCardProps) {
+export function SceneCard({ scene, compact = false, roomName }: SceneCardProps) {
   const [isActivating, setIsActivating] = useState(false);
   const Icon = getSceneIcon(scene.name);
   const color = getSceneColor(scene.name);
   const isActive = scene.isActive;
+  const sourceInfo = getSourceInfo(scene.source);
 
   const handleActivate = useCallback(async () => {
     setIsActivating(true);
@@ -104,14 +146,31 @@ export function SceneCard({ scene, compact = false }: SceneCardProps) {
             <Icon className="w-5 h-5" style={{ color }} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm text-[var(--text-primary)] truncate">
-              {scene.name}
-            </p>
-            {isActive && (
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-sm text-[var(--text-primary)] truncate">
+                {scene.name}
+              </p>
+              {sourceInfo && (
+                <span
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  style={{ backgroundColor: sourceInfo.bgColor, color: sourceInfo.color }}
+                >
+                  <sourceInfo.Icon className="w-3 h-3" />
+                  {scene.source === 'lutron' && scene.buttonNumber !== undefined 
+                    ? `#${scene.buttonNumber}` 
+                    : sourceInfo.label}
+                </span>
+              )}
+            </div>
+            {roomName ? (
+              <p className="text-xs text-[var(--text-secondary)] truncate">
+                {roomName}{isActive && <span style={{ color }}> • Active</span>}
+              </p>
+            ) : isActive ? (
               <p className="text-xs" style={{ color }}>
                 Active
               </p>
-            )}
+            ) : null}
           </div>
           {isActivating && (
             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ color }} />
@@ -166,9 +225,28 @@ export function SceneCard({ scene, compact = false }: SceneCardProps) {
             )}
           </div>
 
-          <h3 className="font-semibold text-lg text-[var(--text-primary)] mb-1">
-            {scene.name}
-          </h3>
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h3 className="font-semibold text-lg text-[var(--text-primary)]">
+              {scene.name}
+            </h3>
+            {sourceInfo && (
+              <span
+                className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                style={{ backgroundColor: sourceInfo.bgColor, color: sourceInfo.color }}
+              >
+                <sourceInfo.Icon className="w-3.5 h-3.5" />
+                {scene.source === 'lutron' && scene.buttonNumber !== undefined 
+                  ? `Button #${scene.buttonNumber}` 
+                  : sourceInfo.label}
+              </span>
+            )}
+          </div>
+          
+          {roomName && (
+            <p className="text-sm text-[var(--text-secondary)] mb-2">
+              {roomName}
+            </p>
+          )}
           
           {isActive ? (
             <span
@@ -202,7 +280,7 @@ export function SceneGrid({ scenes, maxVisible = 4 }: SceneGridProps) {
   return (
     <div className="grid grid-cols-2 gap-3">
       {visibleScenes.map((scene) => (
-        <SceneCard key={scene.id} scene={scene} compact />
+        <SceneCard key={scene.id} scene={scene} roomName={scene.roomName} compact />
       ))}
       {remaining > 0 && (
         <div className="col-span-2 text-center py-2">

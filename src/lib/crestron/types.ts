@@ -68,10 +68,17 @@ export interface ShadeSetPositionPayload {
   position: number;
 }
 
+// Scene source types
+export type SceneSource = 'lutron' | 'crestron' | 'action' | 'unknown';
+
 // Scene
 export interface Scene extends CrestronDevice {
   type: "scene";
   isActive?: boolean;
+  roomName?: string;  // Resolved room name from roomId
+  source?: SceneSource;  // Scene source (Lutron, Crestron, Action)
+  buttonNumber?: number;  // Button number for Lutron keypad scenes
+  rawType?: string;  // Raw type info from Crestron API
 }
 
 // Thermostat
