@@ -19,6 +19,7 @@
   --accent-hover: #1D4ED8;
   --accent-light: #DBEAFE;
   --accent-lighter: #EFF6FF;
+  --accent-rgb: 37, 99, 235;
   
   /* Semantic Colors */
   --success: #22C55E;
@@ -54,6 +55,42 @@
   --transition-fast: 150ms ease;
   --transition: 200ms ease;
   --transition-slow: 300ms ease;
+}
+
+/* Dark Mode */
+[data-theme="dark"] {
+  --background: #0A0A0A;
+  --surface: #171717;
+  --surface-hover: #262626;
+  --surface-active: #404040;
+  --border: #333333;
+  --border-light: #262626;
+  
+  /* Text Colors */
+  --text-primary: #FAFAFA;
+  --text-secondary: #A3A3A3;
+  --text-tertiary: #737373;
+  
+  /* Accent Colors */
+  --accent: #3B82F6;
+  --accent-hover: #60A5FA;
+  --accent-light: #1E3A5F;
+  --accent-lighter: #172554;
+  --accent-rgb: 59, 130, 246;
+  
+  /* Semantic Colors */
+  --success: #22C55E;
+  --success-light: #14532D;
+  --warning: #F59E0B;
+  --warning-light: #713F12;
+  --danger: #EF4444;
+  --danger-light: #7F1D1D;
+  
+  /* Shadows - more subtle in dark mode */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
 }
 
 @theme inline {
@@ -121,9 +158,13 @@ body {
 
 /* Utility Classes */
 .glass {
-  background: rgb(255, 255, 255);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="dark"] .glass {
+  background: rgba(23, 23, 23, 0.9);
 }
 
 .card {

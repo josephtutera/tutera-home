@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { fetchAllData, useDeviceStore, checkTemperatureSatisfaction } from "@/stores/deviceStore";
+import { useThemeStore, applyTheme } from "@/stores/themeStore";
 
 // Default to 10 seconds if env var not set
 const REFRESH_INTERVAL = parseInt(
@@ -56,6 +57,24 @@ export function DataProvider({ children }: DataProviderProps) {
   useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  // Initialize theme on mount
+  const { theme } = useThemeStore();
+  useEffect(() => {
+    applyTheme(theme);
+    
+    // Listen for system theme changes
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      const currentTheme = useThemeStore.getState().theme;
+      if (currentTheme === "system") {
+        applyTheme("system");
+      }
+    };
+    
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [theme]);
 
   useEffect(() => {
     // Wait for hydration before checking connection

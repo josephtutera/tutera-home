@@ -27,7 +27,7 @@ import { ThermostatCard } from "@/components/devices/ThermostatCard";
 import { SceneGrid } from "@/components/devices/SceneCard";
 import { LockAllButton } from "@/components/devices/LockCard";
 import { SensorSummary } from "@/components/devices/SensorCard";
-import { EquipmentCard } from "@/components/devices/EquipmentCard";
+import { EquipmentCard, EquipmentSummaryCard } from "@/components/devices/EquipmentCard";
 import { RoomStatusTile } from "@/components/devices/RoomStatusTile";
 import { RoomZoneControl } from "@/components/devices/RoomZoneControl";
 import { MediaRoomCard } from "@/components/devices/MediaRoomCard";
@@ -471,32 +471,13 @@ export default function Dashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
               >
-                <div className="flex items-center gap-2 mb-3">
-                  <Power className="w-5 h-5 text-[var(--accent)]" />
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-                    Equipment ({filteredEquipment.length})
-                  </h2>
-                </div>
-                {equipmentByRoom && equipmentByRoom.length > 0 ? (
-                  <div className="space-y-4">
-                    {equipmentByRoom.map(({ roomId, roomName, equipment }) => (
-                      <div key={roomId} className="space-y-2">
-                        <p className="text-sm font-medium text-[var(--text-secondary)]">{roomName}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-2">
-                          {equipment.map((equip) => (
-                            <EquipmentCard key={equip.id} equipment={equip} compact roomName={roomName} />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {filteredEquipment.map((equip) => (
-                      <EquipmentCard key={equip.id} equipment={equip} compact />
-                    ))}
-                  </div>
-                )}
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
+                  Equipment
+                </h2>
+                <EquipmentSummaryCard 
+                  equipment={filteredEquipment} 
+                  equipmentByRoom={equipmentByRoom} 
+                />
               </motion.section>
             )}
 

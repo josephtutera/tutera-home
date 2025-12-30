@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
-import { Fan, Flame, Waves, Droplets, Power } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Fan, Flame, Waves, Droplets, Power, ChevronDown, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import type { Light } from "@/lib/crestron/types";
 import { setLightState, useDeviceStore } from "@/stores/deviceStore";
+import { useShallow } from "zustand/react/shallow";
 
 interface EquipmentCardProps {
   equipment: Light;
@@ -174,5 +175,273 @@ export function EquipmentCard({ equipment, compact = false, roomName }: Equipmen
 }
 
 export default EquipmentCard;
+
+// Get appropriate icon based on equipment name (exported for use elsewhere)
+export { getEquipmentIcon, getEquipmentColor };
+
+interface EquipmentGroupControlProps {
+  equipment: Light[];
+  standalone?: boolean;
+}
+
+export function EquipmentGroupControl({ equipment, standalone = true }: EquipmentGroupControlProps) {
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  const onCount = equipment.filter(e => e.isOn || e.level > 0).length;
+  const totalEquipment = equipment.length;
+  
+  const handleAllEquipment = useCallback(async (turnOn: boolean) => {
+    setIsUpdating(true);
+    
+    for (const equip of equipment) {
+      await setLightState(equip.id, turnOn ? 65535 : 0, turnOn);
+    }
+    setIsUpdating(false);
+  }, [equipment]);
+
+  // Non-standalone: just render buttons
+  if (!standalone) {
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleAllEquipment(false);
+          }}
+          disabled={onCount === 0 || isUpdating}
+          className={`
+            px-3 py-1.5 rounded-lg text-xs font-medium
+            transition-all duration-200
+            ${onCount === 0 
+              ? "bg-[var(--surface-hover)] text-[var(--text-tertiary)] cursor-not-allowed" 
+              : "bg-[var(--surface)] text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+            }
+          `}
+        >
+          All Off
+        </button>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleAllEquipment(true);
+          }}
+          disabled={onCount === totalEquipment || isUpdating}
+          className={`
+            px-3 py-1.5 rounded-lg text-xs font-medium
+            transition-all duration-200
+            ${onCount === totalEquipment
+              ? "bg-[var(--accent)]/50 text-white cursor-not-allowed"
+              : "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90"
+            }
+          `}
+        >
+          All On
+        </button>
+      </div>
+    );
+  }
+
+  // Standalone: just buttons in a card (equipment doesn't have dimming)
+  return (
+    <Card padding="md" className="bg-[var(--surface)]">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/20 flex items-center justify-center">
+            <Power className="w-5 h-5 text-[var(--accent)]" />
+          </div>
+          <div>
+            <p className="font-semibold text-[var(--text-primary)]">
+              {onCount} of {totalEquipment} on
+            </p>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Equipment
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleAllEquipment(false)}
+            disabled={onCount === 0 || isUpdating}
+            className={`
+              px-3 py-1.5 rounded-lg text-xs font-medium
+              transition-all duration-200
+              ${onCount === 0 
+                ? "bg-[var(--surface-hover)] text-[var(--text-tertiary)] cursor-not-allowed" 
+                : "bg-[var(--surface-hover)] text-[var(--text-primary)] hover:bg-[var(--surface-active)]"
+              }
+            `}
+          >
+            All Off
+          </button>
+          <button
+            onClick={() => handleAllEquipment(true)}
+            disabled={onCount === totalEquipment || isUpdating}
+            className={`
+              px-3 py-1.5 rounded-lg text-xs font-medium
+              transition-all duration-200
+              ${onCount === totalEquipment
+                ? "bg-[var(--accent)]/50 text-white cursor-not-allowed"
+                : "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90"
+              }
+            `}
+          >
+            All On
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+interface EquipmentByRoom {
+  roomId: string;
+  roomName: string;
+  equipment: Light[];
+}
+
+interface EquipmentSummaryCardProps {
+  equipment: Light[];
+  equipmentByRoom: EquipmentByRoom[] | null;
+}
+
+export function EquipmentSummaryCard({ equipment, equipmentByRoom }: EquipmentSummaryCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Get equipment IDs for stable selector
+  const equipmentIds = useMemo(() => equipment.map(e => e.id), [equipment]);
+  
+  // Subscribe to store to get real-time updates with shallow comparison
+  const storeLights = useDeviceStore(
+    useShallow((state) => state.lights.filter(l => equipmentIds.includes(l.id)))
+  );
+  
+  // Merge with passed equipment for any not found in store
+  const storeEquipment = useMemo(() => {
+    return equipment.map(e => storeLights.find(l => l.id === e.id) || e);
+  }, [equipment, storeLights]);
+  
+  const onCount = storeEquipment.filter(e => e.isOn || e.level > 0).length;
+  const totalEquipment = storeEquipment.length;
+  
+  const handleAllEquipment = useCallback(async (turnOn: boolean) => {
+    setIsUpdating(true);
+    
+    for (const equip of equipment) {
+      await setLightState(equip.id, turnOn ? 65535 : 0, turnOn);
+    }
+    setIsUpdating(false);
+  }, [equipment]);
+
+  return (
+    <Card 
+      padding="md" 
+      className="bg-gradient-to-br from-[var(--accent)]/5 to-transparent relative overflow-hidden"
+    >
+      {/* Summary header - clickable to expand */}
+      <div 
+        className="flex items-center justify-between cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-3">
+          <motion.div 
+            animate={{
+              backgroundColor: onCount > 0 ? "var(--accent)" : "rgba(var(--accent-rgb), 0.2)",
+            }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+          >
+            <Power className={`w-5 h-5 ${onCount > 0 ? "text-white" : "text-[var(--accent)]"}`} />
+          </motion.div>
+          <div>
+            <p className="font-semibold text-[var(--text-primary)]">
+              {onCount} of {totalEquipment} on
+            </p>
+            <p className="text-xs text-[var(--text-secondary)]">
+              {totalEquipment} equipment items
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          {/* All On/Off buttons */}
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => handleAllEquipment(false)}
+              disabled={onCount === 0 || isUpdating}
+              className={`
+                px-3 py-1.5 rounded-lg text-xs font-medium
+                transition-all duration-200
+                ${onCount === 0 
+                  ? "bg-[var(--surface-hover)] text-[var(--text-tertiary)] cursor-not-allowed" 
+                  : "bg-[var(--surface)] text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                }
+              `}
+            >
+              All Off
+            </button>
+            <button
+              onClick={() => handleAllEquipment(true)}
+              disabled={onCount === totalEquipment || isUpdating}
+              className={`
+                px-3 py-1.5 rounded-lg text-xs font-medium
+                transition-all duration-200
+                ${onCount === totalEquipment
+                  ? "bg-[var(--accent)]/50 text-white cursor-not-allowed"
+                  : "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90"
+                }
+              `}
+            >
+              All On
+            </button>
+          </div>
+          
+          {/* Expand chevron */}
+          <button className="p-1 hover:bg-[var(--surface-hover)] rounded-lg transition-colors">
+            {expanded ? (
+              <ChevronDown className="w-5 h-5 text-[var(--text-tertiary)]" />
+            ) : (
+              <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)]" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded content - equipment by room */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-4 pt-4 border-t border-[var(--border-light)]"
+          >
+            {equipmentByRoom && equipmentByRoom.length > 0 ? (
+              <div className="space-y-4">
+                {equipmentByRoom.map(({ roomId, roomName, equipment: roomEquip }) => (
+                  <div key={roomId} className="space-y-2">
+                    <p className="text-sm font-medium text-[var(--text-secondary)]">{roomName}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-2">
+                      {roomEquip.map((equip) => (
+                        <EquipmentCard key={equip.id} equipment={equip} compact roomName={roomName} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {equipment.map((equip) => (
+                  <EquipmentCard key={equip.id} equipment={equip} compact />
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </Card>
+  );
+}
 
 

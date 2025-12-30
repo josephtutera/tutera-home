@@ -16,6 +16,7 @@ import {
   Wifi,
   WifiOff,
   Music,
+  Settings,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { IconButton } from "@/components/ui/Button";
@@ -101,6 +102,15 @@ export function Header() {
               )}
             </div>
 
+            {/* Settings Button */}
+            <Link href="/settings" className="hidden sm:block">
+              <IconButton
+                icon={<Settings className="w-4 h-4" />}
+                variant="ghost"
+                aria-label="Settings"
+              />
+            </Link>
+
             {/* Disconnect Button */}
             <IconButton
               icon={<LogOut className="w-4 h-4" />}
@@ -154,6 +164,22 @@ export function Header() {
               );
             })}
             <hr className="my-2 border-[var(--border)]" />
+            <Link
+              href="/settings"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`
+                flex items-center gap-3 px-4 py-3 rounded-[var(--radius)] text-sm font-medium
+                transition-colors duration-200
+                ${
+                  pathname === "/settings"
+                    ? "bg-[var(--accent-lighter)] text-[var(--accent)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+                }
+              `}
+            >
+              <Settings className="w-5 h-5" />
+              Settings
+            </Link>
             <div className="flex items-center justify-between px-4 py-2">
               <div className="flex items-center gap-2">
                 {isConnected ? (
