@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Lightbulb,
@@ -13,6 +13,7 @@ import { LightCard, levelToPercent, percentToLevel } from "@/components/devices/
 import { LightingRoomGroup } from "@/components/devices/LightingRoomGroup";
 import { setLightState } from "@/stores/deviceStore";
 import type { LightingZoneWithData } from "@/stores/deviceStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 // Helper to get/set last brightness level from localStorage
 const LAST_BRIGHTNESS_KEY = "tutera-last-brightness";
@@ -53,6 +54,9 @@ export function LightingZoneControl({
 }: LightingZoneControlProps) {
   const { zone, lights, rooms, roomGroups, totalLights, lightsOn, avgBrightness } = zoneData;
   
+  // Get settings
+  const { zoneControlStyle, sliderActivationDelay } = useSettingsStore();
+  
   // Track which rooms are expanded within this zone
   const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
   
@@ -62,6 +66,21 @@ export function LightingZoneControl({
   const [dragPercent, setDragPercent] = useState<number | null>(null);
   const [startX, setStartX] = useState(0);
   const sliderRef = useRef<HTMLDivElement>(null);
+  
+  // Press-and-hold state for slider activation (touch safety)
+  const [isSliderActivated, setIsSliderActivated] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
+  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pointerIdRef = useRef<number | null>(null);
+  
+  // Clear hold timer on unmount
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+      }
+    };
+  }, []);
   
   const lightsOff = totalLights - lightsOn;
   const onPercentage = totalLights > 0 ? Math.round((lightsOn / totalLights) * 100) : 0;
@@ -133,41 +152,83 @@ export function LightingZoneControl({
     return Math.max(0, Math.min(100, Math.round(percent)));
   }, [avgPercent]);
 
-  // Slider pointer event handlers
+  // Slider pointer event handlers with press-and-hold activation for touch safety
   const handleSliderPointerDown = useCallback((e: React.PointerEvent) => {
     if (isUpdating) return;
     e.stopPropagation(); // Prevent card expansion when clicking slider
-    setIsDragging(true);
+    
+    pointerIdRef.current = e.pointerId;
+    setIsHolding(true);
     setStartX(e.clientX);
-    // Immediately calculate percent from click position for instant feedback
-    const clickPercent = calculatePercentFromPosition(e.clientX);
-    setDragPercent(clickPercent);
+    
+    // Start hold timer - slider activates after delay
+    holdTimerRef.current = setTimeout(() => {
+      setIsSliderActivated(true);
+      setIsDragging(true);
+      // Calculate initial percent from current position
+      const clickPercent = calculatePercentFromPosition(e.clientX);
+      setDragPercent(clickPercent);
+    }, sliderActivationDelay);
+    
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [isUpdating, calculatePercentFromPosition]);
+  }, [isUpdating, calculatePercentFromPosition, sliderActivationDelay]);
 
   const handleSliderPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging || isUpdating) return;
+    if (isUpdating) return;
+    
+    // If still in hold phase, check if user moved too much (cancel activation)
+    if (isHolding && !isSliderActivated) {
+      const moveDistance = Math.abs(e.clientX - startX);
+      if (moveDistance > 10) {
+        // User is scrolling, not trying to use slider - cancel
+        if (holdTimerRef.current) {
+          clearTimeout(holdTimerRef.current);
+          holdTimerRef.current = null;
+        }
+        setIsHolding(false);
+        if (pointerIdRef.current !== null) {
+          try {
+            (e.target as HTMLElement).releasePointerCapture(pointerIdRef.current);
+          } catch {
+            // Ignore if already released
+          }
+        }
+        return;
+      }
+    }
+    
+    // Only respond if slider is activated
+    if (!isDragging || !isSliderActivated) return;
     
     // Calculate percent from absolute position for smooth sliding
     const newPercent = calculatePercentFromPosition(e.clientX);
     setDragPercent(newPercent);
-  }, [isDragging, isUpdating, calculatePercentFromPosition]);
+  }, [isDragging, isUpdating, isHolding, isSliderActivated, startX, calculatePercentFromPosition]);
 
   const handleSliderPointerUp = useCallback(async (e: React.PointerEvent) => {
-    if (!isDragging) return;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    
-    // Use the dragPercent value directly (updated during drag)
-    let finalPercent = dragPercent;
-    if (finalPercent === null) {
-      finalPercent = calculatePercentFromPosition(e.clientX);
+    // Clear hold timer
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
     }
     
-    await handleAllLights(Math.max(0, Math.min(100, finalPercent)));
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore if already released
+    }
     
+    // Only apply changes if slider was activated
+    if (isDragging && isSliderActivated && dragPercent !== null) {
+      await handleAllLights(Math.max(0, Math.min(100, dragPercent)));
+    }
+    
+    setIsHolding(false);
     setIsDragging(false);
+    setIsSliderActivated(false);
     setDragPercent(null);
-  }, [isDragging, dragPercent, calculatePercentFromPosition, handleAllLights]);
+    pointerIdRef.current = null;
+  }, [isDragging, isSliderActivated, dragPercent, handleAllLights]);
 
   const displayPercent = isDragging && dragPercent !== null ? dragPercent : avgPercent;
   const bgFillPercent = isDragging && dragPercent !== null ? dragPercent : (isOn ? avgPercent : 0);
@@ -299,44 +360,117 @@ export function LightingZoneControl({
         </div>
       </div>
 
-      {/* Collapsed View - Brightness Preset Buttons (safer for touch devices) */}
+      {/* Collapsed View - Brightness Control */}
       {!expanded && lights.length > 0 && (
         <div className={`mt-4 ${isUpdating ? "opacity-70 pointer-events-none" : ""}`}>
-          <div className="flex items-center gap-1.5">
-            {[
-              { label: "Off", value: 0 },
-              { label: "25%", value: 25 },
-              { label: "50%", value: 50 },
-              { label: "75%", value: 75 },
-              { label: "100%", value: 100 },
-            ].map((preset) => {
-              const isActive = !isOn && preset.value === 0 || 
-                (isOn && avgPercent >= preset.value - 12 && avgPercent <= preset.value + 12);
-              return (
-                <button
-                  key={preset.value}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAllLights(preset.value);
-                  }}
-                  disabled={isUpdating}
-                  className={`
-                    flex-1 py-2 px-1 rounded-lg text-xs font-medium
-                    transition-all duration-200 
-                    ${isActive
-                      ? preset.value === 0 
-                        ? "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                        : "bg-yellow-400 text-yellow-900 shadow-sm"
-                      : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] border border-[var(--border-light)]"
-                    }
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                  `}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
-          </div>
+          {zoneControlStyle === "buttons" ? (
+            /* Preset Buttons Mode (safer for touch devices) */
+            <div className="flex items-center gap-1.5">
+              {[
+                { label: "Off", value: 0 },
+                { label: "25%", value: 25 },
+                { label: "50%", value: 50 },
+                { label: "75%", value: 75 },
+                { label: "100%", value: 100 },
+              ].map((preset) => {
+                const isActive = !isOn && preset.value === 0 || 
+                  (isOn && avgPercent >= preset.value - 12 && avgPercent <= preset.value + 12);
+                return (
+                  <button
+                    key={preset.value}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAllLights(preset.value);
+                    }}
+                    disabled={isUpdating}
+                    className={`
+                      flex-1 py-2 px-1 rounded-lg text-xs font-medium
+                      transition-all duration-200 
+                      ${isActive
+                        ? preset.value === 0 
+                          ? "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                          : "bg-yellow-400 text-yellow-900 shadow-sm"
+                        : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] border border-[var(--border-light)]"
+                      }
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                    `}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* Slider Mode (with press-and-hold activation) */
+            <div 
+              ref={sliderRef}
+              onPointerDown={handleSliderPointerDown}
+              onPointerMove={handleSliderPointerMove}
+              onPointerUp={handleSliderPointerUp}
+              onPointerCancel={handleSliderPointerUp}
+              role="slider"
+              aria-label={`${zone.name} lights control. ${lightsOn} of ${totalLights} on at ${avgPercent}% average brightness. Hold to adjust.`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={avgPercent}
+              aria-valuetext={`${avgPercent}% brightness`}
+              tabIndex={0}
+              className={`
+                relative overflow-hidden rounded-[var(--radius)] cursor-ew-resize
+                transition-all duration-300 select-none touch-none
+                border-2 bg-[var(--surface)]
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2
+                ${isSliderActivated 
+                  ? "border-yellow-400 shadow-lg shadow-yellow-400/30" 
+                  : isHolding 
+                    ? "border-yellow-300 animate-pulse" 
+                    : "border-[var(--border-light)]"
+                }
+                ${isUpdating ? "opacity-70 pointer-events-none" : ""}
+              `}
+            >
+              {/* Dynamic background gradient fill */}
+              <motion.div
+                className="absolute inset-0 pointer-events-none"
+                animate={{
+                  background: `linear-gradient(90deg, 
+                    rgba(255,255,255,0.95) 0%, 
+                    rgba(252,211,77,${0.2 + (bgFillPercent / 100) * 0.4}) ${bgFillPercent}%, 
+                    rgba(245,158,11,${0.15 + (bgFillPercent / 100) * 0.4}) ${bgFillPercent}%, 
+                    rgba(255,255,255,0.95) ${bgFillPercent + 2}%
+                  )`,
+                }}
+                transition={{ duration: isDragging ? 0.05 : 0.3 }}
+              />
+              
+              {/* Content */}
+              <div className="relative p-2.5">
+                <div className="flex items-center gap-3">
+                  {/* Hold indicator */}
+                  <span className={`text-[10px] font-medium transition-opacity ${isSliderActivated ? "opacity-0" : "opacity-60"} text-[var(--text-tertiary)]`}>
+                    {isHolding && !isSliderActivated ? "Hold..." : "Hold to adjust"}
+                  </span>
+                  
+                  {/* Slider bar */}
+                  <div className="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{
+                        background: "linear-gradient(90deg, var(--light-color), var(--light-color-warm))",
+                      }}
+                      animate={{ width: `${displayPercent}%` }}
+                      transition={{ duration: isDragging ? 0.05 : 0.3 }}
+                    />
+                  </div>
+                  
+                  {/* Percentage display */}
+                  <span className={`text-sm font-semibold tabular-nums transition-colors shrink-0 ${isSliderActivated ? "text-yellow-600" : "text-[var(--text-secondary)]"}`}>
+                    {displayPercent}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
