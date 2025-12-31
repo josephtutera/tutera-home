@@ -383,7 +383,7 @@ export function LightingRoomGroup({
               <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
               <span className="text-xs text-[var(--text-tertiary)]">Quick Scenes</span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 justify-center">
               {favoriteScenes.slice(0, 4).map((scene) => (
                 <CompactSceneButton key={scene.id} scene={scene} />
               ))}
