@@ -267,167 +267,153 @@ export default function SettingsPage() {
             <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
               Polling Settings
             </h2>
-            <Card padding="md" className="space-y-6">
+            <Card padding="md" className="space-y-4">
               {/* Description */}
               <div className="flex items-start gap-3">
-                <Clock className="w-5 h-5 text-[var(--accent)] mt-0.5" />
-                <div>
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Configure how often the app fetches data from your Crestron processor. 
-                    Longer intervals reduce network traffic when the app is idle.
-                  </p>
-                </div>
-              </div>
-
-              {/* Polling Intervals */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium text-[var(--text-primary)]">Refresh Intervals</h3>
-                
-                {/* Active Interval */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-[var(--text-primary)]">When Active</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">While you&apos;re using the app</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="60"
-                      value={activeInterval}
-                      onChange={(e) => setActiveInterval(parseInt(e.target.value) || 3)}
-                      className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <span className="text-sm text-[var(--text-secondary)] w-8">sec</span>
-                  </div>
-                </div>
-
-                {/* Idle Level 1 */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-[var(--text-primary)]">After {formatDuration(idleThreshold1)} Idle</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">First idle tier</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="300"
-                      value={idle1MinInterval}
-                      onChange={(e) => setIdle1MinInterval(parseInt(e.target.value) || 10)}
-                      className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <span className="text-sm text-[var(--text-secondary)] w-8">sec</span>
-                  </div>
-                </div>
-
-                {/* Idle Level 2 */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-[var(--text-primary)]">After {formatDuration(idleThreshold2)} Idle</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">Second idle tier</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="600"
-                      value={idle5MinInterval}
-                      onChange={(e) => setIdle5MinInterval(parseInt(e.target.value) || 60)}
-                      className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <span className="text-sm text-[var(--text-secondary)] w-8">sec</span>
-                  </div>
-                </div>
-
-                {/* Idle Level 3 */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-[var(--text-primary)]">After {formatDuration(idleThreshold3)} Idle</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">Deep idle (max savings)</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="60"
-                      max="3600"
-                      value={idle10MinInterval}
-                      onChange={(e) => setIdle10MinInterval(parseInt(e.target.value) || 1800)}
-                      className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <span className="text-sm text-[var(--text-secondary)] w-8">sec</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Idle Thresholds */}
-              <div className="space-y-4 pt-4 border-t border-[var(--border-light)]">
-                <h3 className="text-sm font-medium text-[var(--text-primary)]">Idle Thresholds</h3>
-                <p className="text-xs text-[var(--text-tertiary)]">
-                  Time of inactivity before switching to slower refresh rates
+                <Clock className="w-5 h-5 text-[var(--accent)] mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Configure how often the app fetches data from your Crestron processor.
                 </p>
-                
-                {/* Threshold 1 */}
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-[var(--text-primary)]">First Tier</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="10"
-                      max="300"
-                      value={idleThreshold1}
-                      onChange={(e) => setIdleThreshold1(parseInt(e.target.value) || 60)}
-                      className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <span className="text-sm text-[var(--text-secondary)] w-8">sec</span>
-                  </div>
-                </div>
+              </div>
 
-                {/* Threshold 2 */}
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-[var(--text-primary)]">Second Tier</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="60"
-                      max="600"
-                      value={idleThreshold2}
-                      onChange={(e) => setIdleThreshold2(parseInt(e.target.value) || 300)}
-                      className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <span className="text-sm text-[var(--text-secondary)] w-8">sec</span>
-                  </div>
-                </div>
-
-                {/* Threshold 3 */}
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-[var(--text-primary)]">Third Tier</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="120"
-                      max="1800"
-                      value={idleThreshold3}
-                      onChange={(e) => setIdleThreshold3(parseInt(e.target.value) || 600)}
-                      className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <span className="text-sm text-[var(--text-secondary)] w-8">sec</span>
-                  </div>
-                </div>
+              {/* Settings Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)]">
+                      <th className="text-left py-3 px-2 font-medium text-[var(--text-secondary)]">
+                        Idle Duration
+                      </th>
+                      <th className="text-left py-3 px-2 font-medium text-[var(--text-secondary)]">
+                        Polling Interval
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-light)]">
+                    {/* Active Row */}
+                    <tr className="hover:bg-[var(--surface-hover)]">
+                      <td className="py-3 px-2 text-[var(--text-primary)]">
+                        Active (user interacting)
+                      </td>
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="60"
+                            value={activeInterval}
+                            onChange={(e) => setActiveInterval(parseInt(e.target.value) || 3)}
+                            className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                          />
+                          <span className="text-[var(--text-secondary)]">seconds</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Tier 1 Row */}
+                    <tr className="hover:bg-[var(--surface-hover)]">
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2 text-[var(--text-primary)]">
+                          <span>After</span>
+                          <input
+                            type="number"
+                            min="10"
+                            max="300"
+                            value={idleThreshold1}
+                            onChange={(e) => setIdleThreshold1(parseInt(e.target.value) || 60)}
+                            className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                          />
+                          <span className="text-[var(--text-tertiary)]">sec idle</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="300"
+                            value={idle1MinInterval}
+                            onChange={(e) => setIdle1MinInterval(parseInt(e.target.value) || 10)}
+                            className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                          />
+                          <span className="text-[var(--text-secondary)]">seconds</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Tier 2 Row */}
+                    <tr className="hover:bg-[var(--surface-hover)]">
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2 text-[var(--text-primary)]">
+                          <span>After</span>
+                          <input
+                            type="number"
+                            min="60"
+                            max="600"
+                            value={idleThreshold2}
+                            onChange={(e) => setIdleThreshold2(parseInt(e.target.value) || 300)}
+                            className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                          />
+                          <span className="text-[var(--text-tertiary)]">sec idle</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="600"
+                            value={idle5MinInterval}
+                            onChange={(e) => setIdle5MinInterval(parseInt(e.target.value) || 60)}
+                            className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                          />
+                          <span className="text-[var(--text-secondary)]">seconds</span>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Tier 3 Row */}
+                    <tr className="hover:bg-[var(--surface-hover)]">
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2 text-[var(--text-primary)]">
+                          <span>After</span>
+                          <input
+                            type="number"
+                            min="120"
+                            max="1800"
+                            value={idleThreshold3}
+                            onChange={(e) => setIdleThreshold3(parseInt(e.target.value) || 600)}
+                            className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                          />
+                          <span className="text-[var(--text-tertiary)]">sec idle</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="60"
+                            max="3600"
+                            value={idle10MinInterval}
+                            onChange={(e) => setIdle10MinInterval(parseInt(e.target.value) || 1800)}
+                            className="w-16 px-2 py-1 text-sm text-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                          />
+                          <span className="text-[var(--text-secondary)]">seconds</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
               {/* Reset Button */}
-              <div className="pt-4 border-t border-[var(--border-light)]">
+              <div className="pt-2 flex items-center justify-between">
                 <button
                   onClick={resetToDefaults}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface-hover)] hover:bg-[var(--border-light)] transition-colors text-sm text-[var(--text-secondary)]"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-hover)] hover:bg-[var(--border-light)] transition-colors text-sm text-[var(--text-secondary)]"
                 >
                   <RotateCcw className="w-4 h-4" />
                   Reset to Defaults
                 </button>
-                <p className="text-xs text-[var(--text-tertiary)] mt-2">
-                  Defaults: {DEFAULT_POLLING_INTERVALS.active}s active, 
-                  {DEFAULT_POLLING_INTERVALS.idle1Min}s/{DEFAULT_POLLING_INTERVALS.idle5Min}s/{DEFAULT_POLLING_INTERVALS.idle10Min}s idle
+                <p className="text-xs text-[var(--text-tertiary)]">
+                  Default: {DEFAULT_POLLING_INTERVALS.active}s active
                 </p>
               </div>
             </Card>
