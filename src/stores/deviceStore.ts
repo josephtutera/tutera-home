@@ -254,7 +254,8 @@ async function fetchWithAuth(endpoint: string) {
 let isRefreshingAuth = false;
 
 // Fetch all data (rooms, devices, scenes) - used by DataProvider for polling
-export async function fetchAllData(isRetryAfterRefresh = false) {
+// silent: if true, don't set isLoading to true (used for background polling to avoid UI flicker)
+export async function fetchAllData(isRetryAfterRefresh = false, silent = false) {
   const store = useDeviceStore.getState();
   
   // Skip if already loading to prevent overlap
@@ -262,7 +263,11 @@ export async function fetchAllData(isRetryAfterRefresh = false) {
     return;
   }
   
-  store.setLoading(true);
+  // Only set loading state for non-silent fetches (manual refresh, initial load)
+  // Silent fetches are used for background polling to avoid UI flicker
+  if (!silent) {
+    store.setLoading(true);
+  }
   store.setError(null);
   
   try {
@@ -291,14 +296,16 @@ export async function fetchAllData(isRetryAfterRefresh = false) {
     // If all data is empty and we haven't already tried refreshing, attempt to refresh auth
     if (allEmpty && !isRetryAfterRefresh && !isRefreshingAuth) {
       isRefreshingAuth = true;
-      store.setLoading(false); // Release loading lock for refresh
+      if (!silent) {
+        store.setLoading(false); // Release loading lock for refresh
+      }
       
       const refreshSuccess = await refreshAuth();
       isRefreshingAuth = false;
       
       if (refreshSuccess) {
-        // Retry fetch with new auth
-        return fetchAllData(true);
+        // Retry fetch with new auth, preserving silent flag
+        return fetchAllData(true, silent);
       } else {
         store.setError("Session expired. Please log in again.");
         return;
@@ -446,7 +453,10 @@ export async function fetchAllData(isRetryAfterRefresh = false) {
   } catch (error) {
     store.setError(error instanceof Error ? error.message : "Failed to fetch data");
   } finally {
-    store.setLoading(false);
+    // Only reset loading state if we set it (non-silent calls)
+    if (!silent) {
+      store.setLoading(false);
+    }
   }
 }
 

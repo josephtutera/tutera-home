@@ -86,7 +86,7 @@ export default function Dashboard() {
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [roomViewMode, setRoomViewMode] = useState<"zones" | "rooms">("zones");
-  const [expandedZoneId, setExpandedZoneId] = useState<string | null>("whole-house");
+  const [expandedZoneId, setExpandedZoneId] = useState<string | null>(null);
   
   const { outsideTemp } = useWeatherStore();
 
@@ -274,7 +274,7 @@ export default function Dashboard() {
             variants={containerVariants}
             initial="hidden"
             animate="show"
-            className="mb-6"
+            className="mb-4"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -365,15 +365,15 @@ export default function Dashboard() {
         )}
 
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Scenes & Climate */}
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="space-y-6"
-          >
+        {/* Main Content Grid - Order: Scenes, Lighting, Climate, Media, Equipment */}
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="space-y-6"
+        >
+          {/* Row 1: Scenes and Lighting side by side on large screens */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Scenes */}
             {scenes.length > 0 && (
               <motion.section variants={itemVariants}>
@@ -389,6 +389,52 @@ export default function Dashboard() {
                   </Link>
                 </div>
                 <SceneGrid scenes={scenes} maxVisible={4} />
+              </motion.section>
+            )}
+
+            {/* Lighting */}
+            {filteredLights.length > 0 && (
+              <motion.section variants={itemVariants}>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
+                  Lighting
+                </h2>
+                <Link href="/lighting">
+                  <Card padding="md" className="bg-[var(--surface)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[var(--light-color)]/20 flex items-center justify-center">
+                          <Lightbulb className="w-5 h-5 text-[var(--light-color)]" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-[var(--text-primary)]">
+                            {filteredLights.filter(l => l.isOn || l.level > 0).length} of {filteredLights.length} lights on
+                          </p>
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            {new Set(filteredLights.filter(l => l.roomId).map(l => l.roomId)).size} rooms • {filteredLights.filter(l => l.roomId).length} assigned
+                          </p>
+                        </div>
+                      </div>
+                      <LightGroupControl lights={filteredLights} standalone={false} />
+                    </div>
+                  </Card>
+                </Link>
+              </motion.section>
+            )}
+          </div>
+
+          {/* Row 2: Climate and Media side by side on large screens */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Climate */}
+            {thermostats.length > 0 && (
+              <motion.section variants={itemVariants}>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
+                  Climate
+                </h2>
+                <Link href="/climate">
+                  <div className="hover:opacity-90 transition-opacity cursor-pointer">
+                    <ThermostatCard thermostat={thermostats[0]} compact />
+                  </div>
+                </Link>
               </motion.section>
             )}
 
@@ -415,76 +461,13 @@ export default function Dashboard() {
                 </Link>
               </motion.section>
             )}
+          </div>
 
-            {/* Climate */}
-            {thermostats.length > 0 && (
-              <motion.section variants={itemVariants}>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
-                  Climate
-                </h2>
-                <Link href="/climate">
-                  <div className="hover:opacity-90 transition-opacity cursor-pointer">
-                    <ThermostatCard thermostat={thermostats[0]} compact />
-                  </div>
-                </Link>
-              </motion.section>
-            )}
-
-            {/* Sensors Summary */}
-            {sensors.length > 0 && (
-              <motion.section variants={itemVariants}>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
-                  Sensors
-                </h2>
-                <SensorSummary sensors={sensors} />
-              </motion.section>
-            )}
-          </motion.div>
-
-          {/* Center Column - Lights */}
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="lg:col-span-2 space-y-6"
-          >
-            {/* Lighting */}
-            {filteredLights.length > 0 && (
-              <motion.section variants={itemVariants} initial="show" animate="show">
-                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
-                  Lighting
-                </h2>
-                {/* Clickable summary card that links to Lighting page */}
-                <Link href="/lighting">
-                  <Card padding="md" className="bg-[var(--surface)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-[var(--light-color)]/20 flex items-center justify-center">
-                          <Lightbulb className="w-5 h-5 text-[var(--light-color)]" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-[var(--text-primary)]">
-                            {filteredLights.filter(l => l.isOn || l.level > 0).length} of {filteredLights.length} lights on
-                          </p>
-                          <p className="text-xs text-[var(--text-secondary)]">
-                            {new Set(filteredLights.filter(l => l.roomId).map(l => l.roomId)).size} rooms • {filteredLights.filter(l => l.roomId).length} assigned
-                          </p>
-                        </div>
-                      </div>
-                      <LightGroupControl lights={filteredLights} standalone={false} />
-                    </div>
-                  </Card>
-                </Link>
-              </motion.section>
-            )}
-
+          {/* Row 3: Equipment and Sensors & Security side by side on large screens */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Equipment (Fan, Fountain, Heater, etc.) */}
             {filteredEquipment.length > 0 && (
-              <motion.section 
-                initial={{ opacity: 0, y: 20 }} 
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-              >
+              <motion.section variants={itemVariants}>
                 <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
                   Equipment
                 </h2>
@@ -495,60 +478,65 @@ export default function Dashboard() {
               </motion.section>
             )}
 
-            {/* Shades */}
-            {shades.length > 0 && (
-              <section>
+            {/* Sensors and Security - Always show, clickable to navigate */}
+            <motion.section variants={itemVariants}>
+              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
+                Sensors and Security
+              </h2>
+              <Link href="/security">
+                <Card padding="md" className="hover:bg-[var(--surface-hover)] transition-colors cursor-pointer">
+                  {/* Security status row */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        unlockedDoors > 0 ? "bg-[var(--danger)]/20" : "bg-[var(--success)]/20"
+                      }`}>
+                        <Shield className={`w-5 h-5 ${
+                          unlockedDoors > 0 ? "text-[var(--danger)]" : "text-[var(--success)]"
+                        }`} />
+                      </div>
+                      <div>
+                        <p className="font-medium">
+                          {doorLocks.length > 0 ? `${doorLocks.length} Door Locks` : "Security"}
+                        </p>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          {doorLocks.length === 0 
+                            ? "No locks configured"
+                            : unlockedDoors > 0 
+                              ? `${unlockedDoors} unlocked` 
+                              : "All locked"}
+                        </p>
+                      </div>
+                    </div>
+                    {doorLocks.length > 0 && <LockAllButton locks={doorLocks} />}
+                  </div>
+                  {/* Sensors summary row */}
+                  {sensors.length > 0 && (
+                    <div className="pt-3 border-t border-[var(--border-light)]">
+                      <SensorSummary sensors={sensors} />
+                    </div>
+                  )}
+                </Card>
+              </Link>
+            </motion.section>
+          </div>
+
+          {/* Row 4: Shades */}
+          {shades.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <motion.section variants={itemVariants}>
                 <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">
                   Shades
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {shades.slice(0, 4).map((shade) => (
-                    <motion.div key={shade.id} variants={itemVariants}>
-                      <ShadeCard shade={shade} compact roomName={getRoomName(shade.roomId)} />
-                    </motion.div>
+                    <ShadeCard key={shade.id} shade={shade} compact roomName={getRoomName(shade.roomId)} />
                   ))}
                 </div>
-              </section>
-            )}
-
-            {/* Security Quick Action */}
-            {doorLocks.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-                    Security
-                  </h2>
-                  <Link
-                    href="/security"
-                    className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
-                  >
-                    View all <ChevronRight className="w-4 h-4" />
-                  </Link>
-                </div>
-                <Card padding="md" className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      unlockedDoors > 0 ? "bg-[var(--danger)]/20" : "bg-[var(--success)]/20"
-                    }`}>
-                      <Shield className={`w-5 h-5 ${
-                        unlockedDoors > 0 ? "text-[var(--danger)]" : "text-[var(--success)]"
-                      }`} />
-                    </div>
-                    <div>
-                      <p className="font-medium">{doorLocks.length} Door Locks</p>
-                      <p className="text-sm text-[var(--text-secondary)]">
-                        {unlockedDoors > 0 
-                          ? `${unlockedDoors} unlocked` 
-                          : "All locked"}
-                      </p>
-                    </div>
-                  </div>
-                  <LockAllButton locks={doorLocks} />
-                </Card>
-              </section>
-            )}
-          </motion.div>
-        </div>
+              </motion.section>
+            </div>
+          )}
+        </motion.div>
 
         {/* Loading Overlay */}
         {isLoading && (

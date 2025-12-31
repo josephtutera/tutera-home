@@ -74,14 +74,22 @@ export class CrestronClient {
       const separator = endpoint.includes('?') ? '&' : '?';
       const cacheBustUrl = `${this.baseUrl}${endpoint}${separator}_t=${Date.now()}`;
       
+      // Add timeout to prevent hanging forever on unreachable processors
+      // Using 60 seconds to accommodate slow VPN connections to Crestron processors
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
       const response = await fetch(cacheBustUrl, {
         ...options,
         headers,
+        signal: controller.signal,
         // CRITICAL: Disable Next.js fetch caching to always get fresh data from Crestron
         // Without this, device status changes made via physical devices or Crestron Home
         // iOS app will not be reflected because Next.js caches fetch responses by default
         cache: 'no-store',
       });
+      
+      clearTimeout(timeoutId);
 
       // HTTP 409 Conflict typically means the resource is already in the requested state
       // For media room controls, this is a success case (desired state already achieved)
@@ -99,6 +107,13 @@ export class CrestronClient {
       const data = await response.json();
       return { success: true, data };
     } catch (error) {
+      // Handle timeout/abort errors specifically
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          success: false,
+          error: "Connection timed out - processor may be unreachable",
+        };
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
