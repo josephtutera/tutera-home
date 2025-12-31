@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Palette, RefreshCw, ChevronDown, Home, Lightbulb, Music, Zap } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Header } from "@/components/layout/Header";
@@ -221,60 +221,50 @@ export default function ScenesPage() {
                     </button>
 
                     {/* Scenes grouped by source */}
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="px-4 pb-4 pt-2 space-y-4">
-                            {groupScenesBySource(group.scenes).map((sourceGroup, idx) => {
-                              const config = SOURCE_CONFIG[sourceGroup.source];
-                              const SourceIcon = sourceGroup.source === 'lutron' ? Lightbulb 
-                                : sourceGroup.source === 'crestron' ? Music 
-                                : sourceGroup.source === 'action' ? Zap 
-                                : Palette;
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-2 space-y-4">
+                        {groupScenesBySource(group.scenes).map((sourceGroup, idx) => {
+                          const config = SOURCE_CONFIG[sourceGroup.source];
+                          const SourceIcon = sourceGroup.source === 'lutron' ? Lightbulb 
+                            : sourceGroup.source === 'crestron' ? Music 
+                            : sourceGroup.source === 'action' ? Zap 
+                            : Palette;
+                          
+                          return (
+                            <div key={sourceGroup.source}>
+                              {/* Divider line (except for first group) */}
+                              {idx > 0 && (
+                                <div className="border-t border-[var(--border-light)] mb-4" />
+                              )}
                               
-                              return (
-                                <div key={sourceGroup.source}>
-                                  {/* Divider line (except for first group) */}
-                                  {idx > 0 && (
-                                    <div className="border-t border-[var(--border-light)] mb-4" />
-                                  )}
-                                  
-                                  {/* Source header */}
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <SourceIcon 
-                                      className="w-4 h-4" 
-                                      style={{ color: config.color }} 
-                                    />
-                                    <span 
-                                      className="text-sm font-medium"
-                                      style={{ color: config.color }}
-                                    >
-                                      {config.label}
-                                    </span>
-                                    <span className="text-xs text-[var(--text-tertiary)]">
-                                      ({sourceGroup.scenes.length})
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Scenes grid */}
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {sourceGroup.scenes.map((scene) => (
-                                      <SceneCard key={scene.id} scene={scene} compact />
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                              {/* Source header */}
+                              <div className="flex items-center gap-2 mb-3">
+                                <SourceIcon 
+                                  className="w-4 h-4" 
+                                  style={{ color: config.color }} 
+                                />
+                                <span 
+                                  className="text-sm font-medium"
+                                  style={{ color: config.color }}
+                                >
+                                  {config.label}
+                                </span>
+                                <span className="text-xs text-[var(--text-tertiary)]">
+                                  ({sourceGroup.scenes.length})
+                                </span>
+                              </div>
+                              
+                              {/* Scenes grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {sourceGroup.scenes.map((scene) => (
+                                  <SceneCard key={scene.id} scene={scene} compact />
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </Card>
                 </motion.div>
               );
