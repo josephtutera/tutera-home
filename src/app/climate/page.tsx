@@ -45,7 +45,7 @@ export default function ClimatePage() {
   
   // View mode: zones (grouped by floor) or rooms (individual)
   const [viewMode, setViewMode] = useState<ViewMode>("zones");
-  const [expandedZoneId, setExpandedZoneId] = useState<string | null>("whole-house");
+  const [expandedZoneId, setExpandedZoneId] = useState<string | null>(null);
 
   // Get thermostat pairs grouped by room
   const thermostatPairs = useMemo(() => getThermostatPairs(), [thermostats]);
