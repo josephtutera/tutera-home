@@ -115,42 +115,40 @@ export default function LightingPage() {
           animate="show"
           className="space-y-6"
         >
-          {/* Lighting Stats */}
-          <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Lighting Stats - Compact for mobile */}
+          <motion.div variants={itemVariants} className="grid grid-cols-3 gap-2 sm:gap-4">
             {/* Total Lights */}
-            <Card padding="md" className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
-                <Lightbulb className="w-6 h-6 text-yellow-500" />
+            <Card padding="sm" className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3 text-center sm:text-left">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+                <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
               </div>
               <div>
-                <p className="text-3xl font-semibold">{totalLights}</p>
-                <p className="text-sm text-[var(--text-secondary)]">Total Lights</p>
+                <p className="text-xl sm:text-2xl font-semibold">{totalLights}</p>
+                <p className="text-[10px] sm:text-xs text-[var(--text-secondary)]">Total</p>
               </div>
             </Card>
 
             {/* Lights On */}
-            <Card padding="md" className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
-                <Lightbulb className="w-6 h-6 text-yellow-500" />
+            <Card padding="sm" className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3 text-center sm:text-left">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
               </div>
               <div>
-                <p className="text-3xl font-semibold">{lightsOn}</p>
-                <p className="text-sm text-[var(--text-secondary)]">Lights On</p>
+                <p className="text-xl sm:text-2xl font-semibold">{lightsOn}</p>
+                <p className="text-[10px] sm:text-xs text-[var(--text-secondary)]">On</p>
               </div>
             </Card>
 
             {/* Average Brightness */}
-            {lightsOn > 0 && (
-              <Card padding="md" className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
-                  <Lightbulb className="w-6 h-6 text-yellow-500" />
-                </div>
-                <div>
-                  <p className="text-3xl font-semibold">{avgBrightness}%</p>
-                  <p className="text-sm text-[var(--text-secondary)]">Avg Brightness</p>
-                </div>
-              </Card>
-            )}
+            <Card padding="sm" className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3 text-center sm:text-left">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-xl sm:text-2xl font-semibold">{avgBrightness}%</p>
+                <p className="text-[10px] sm:text-xs text-[var(--text-secondary)]">Brightness</p>
+              </div>
+            </Card>
           </motion.div>
 
           {/* View Mode Toggle */}
