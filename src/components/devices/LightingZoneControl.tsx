@@ -116,6 +116,7 @@ export function LightingZoneControl({
           avgBrightness: roomLights.length > 0
             ? Math.round((roomLights.reduce((sum, l) => sum + Math.round((l.level / 65535) * 100), 0) / roomLights.length))
             : 0,
+          equipment: [],  // Fallback doesn't have equipment data
         }));
       })();
 

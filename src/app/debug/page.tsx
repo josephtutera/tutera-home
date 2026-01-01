@@ -8,7 +8,7 @@ export default function DebugPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const { getAuthHeaders, isAuthenticated, processorIp, authKey } = useAuthStore();
+  const { getAuthHeaders, isConnected, processorIp, authKey } = useAuthStore();
 
   // Wait for zustand persist hydration
   useEffect(() => {
@@ -34,10 +34,10 @@ export default function DebugPage() {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isConnected) {
       probeEndpoints();
     }
-  }, [isAuthenticated]);
+  }, [isConnected]);
 
   // Wait for hydration before checking auth
   if (!hydrated) {

@@ -2048,7 +2048,7 @@ export function getLightingZonesWithData(): LightingZoneWithData[] {
     .map(id => actualLights.find(l => l.id === id))
     .filter((l): l is Light => l !== undefined);
   
-  const wholeHouseRooms = Array.from(new Set(wholeHouseLights.map(l => l.roomId).filter(Boolean)))
+  const wholeHouseRooms = Array.from(new Set(wholeHouseLights.map(l => l.roomId).filter((id): id is string => !!id)))
     .map(roomId => {
       const virtualRoom = roomToVirtualRoomMap.get(roomId);
       if (virtualRoom) {

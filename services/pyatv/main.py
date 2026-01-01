@@ -251,24 +251,36 @@ async def get_device(device_id: str):
 # ============================================================================
 
 @app.post("/devices/{device_id}/pair/start")
-async def start_pairing(device_id: str):
-    """Start pairing process with an Apple TV (displays PIN on TV)"""
+async def start_pairing(device_id: str, protocol: str = "companion"):
+    """
+    Start pairing process with an Apple TV (displays PIN on TV)
+    
+    Protocol options:
+    - companion: For navigation/remote control (recommended for Apple TV 4K)
+    - airplay: For media playback only
+    """
     if device_id not in discovered_devices:
         raise HTTPException(status_code=404, detail="Device not found")
     
     config = discovered_devices[device_id]
     
+    # Select protocol based on parameter
+    proto = Protocol.Companion if protocol.lower() == "companion" else Protocol.AirPlay
+    
     try:
-        # Use AirPlay protocol for pairing
-        pairing = await pyatv.pair(config, Protocol.AirPlay, asyncio.get_event_loop())
+        # Use Companion protocol for full remote control
+        pairing = await pyatv.pair(config, proto, asyncio.get_event_loop())
         await pairing.begin()
         
         # Store pairing session for later completion
-        # Note: In a production app, you'd want to manage these sessions properly
         app.state.pairing_sessions = getattr(app.state, 'pairing_sessions', {})
         app.state.pairing_sessions[device_id] = pairing
         
-        return {"message": "Pairing started. Enter the PIN shown on your Apple TV.", "requires_pin": True}
+        return {
+            "message": f"Pairing started with {protocol} protocol. Enter the PIN shown on your Apple TV.",
+            "protocol": protocol,
+            "requires_pin": True
+        }
     except Exception as e:
         logger.error(f"Failed to start pairing: {e}")
         raise HTTPException(status_code=500, detail=f"Pairing failed: {str(e)}")
@@ -317,51 +329,57 @@ async def send_remote_command(device_id: str, command: str):
     - Navigation: up, down, left, right, select, menu, home, top_menu
     - Playback: play, pause, play_pause, stop, next, previous
     - Volume: volume_up, volume_down
-    - Other: turn_on, turn_off, skip_forward, skip_backward
+    - Other: skip_forward, skip_backward
     """
     atv = await get_or_create_connection(device_id)
     remote = atv.remote_control
     
-    # Map command strings to remote control methods
-    command_map = {
+    # Map command strings to remote control method names
+    # We use getattr to safely get methods that may or may not exist
+    command_names = {
         # Navigation
-        "up": remote.up,
-        "down": remote.down,
-        "left": remote.left,
-        "right": remote.right,
-        "select": remote.select,
-        "menu": remote.menu,
-        "home": remote.home,
-        "top_menu": remote.top_menu,
+        "up": "up",
+        "down": "down",
+        "left": "left",
+        "right": "right",
+        "select": "select",
+        "menu": "menu",
+        "home": "home",
+        "top_menu": "top_menu",
         
         # Playback
-        "play": remote.play,
-        "pause": remote.pause,
-        "play_pause": remote.play_pause,
-        "stop": remote.stop,
-        "next": remote.next,
-        "previous": remote.previous,
-        "skip_forward": remote.skip_forward,
-        "skip_backward": remote.skip_backward,
+        "play": "play",
+        "pause": "pause",
+        "play_pause": "play_pause",
+        "stop": "stop",
+        "next": "next",
+        "previous": "previous",
+        "skip_forward": "skip_forward",
+        "skip_backward": "skip_backward",
         
         # Volume
-        "volume_up": remote.volume_up,
-        "volume_down": remote.volume_down,
-        
-        # Power
-        "turn_on": remote.turn_on,
-        "turn_off": remote.turn_off,
+        "volume_up": "volume_up",
+        "volume_down": "volume_down",
     }
     
-    if command not in command_map:
-        available = ", ".join(command_map.keys())
+    if command not in command_names:
+        available = ", ".join(command_names.keys())
         raise HTTPException(
             status_code=400, 
             detail=f"Unknown command: {command}. Available: {available}"
         )
     
+    method_name = command_names[command]
+    method = getattr(remote, method_name, None)
+    
+    if method is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Command '{command}' not supported by this Apple TV"
+        )
+    
     try:
-        await command_map[command]()
+        await method()
         return {"success": True, "command": command}
     except Exception as e:
         logger.error(f"Command {command} failed: {e}")

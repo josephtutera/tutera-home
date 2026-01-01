@@ -30,16 +30,20 @@ This is the FastAPI Swagger UI where you can interact with all the endpoints.
 
 ---
 
-## Step 2: Pair Each Apple TV
+## Step 2: Pair Each Apple TV (IMPORTANT: Use Companion Protocol)
+
+**For navigation commands (D-pad, menu, etc.) to work, you MUST pair with the Companion protocol.**
 
 Repeat these steps for each Apple TV:
 
-### 2a. Start Pairing
+### 2a. Start Pairing with Companion Protocol
 
 1. In the Swagger UI, scroll down to find **POST /devices/{device_id}/pair/start**
 2. Click on it to expand
 3. Click **"Try it out"**
-4. In the `device_id` field, enter the Device ID (e.g., `EA:CD:C6:C5:DC:59` for Apple TV 1)
+4. Enter:
+   - **device_id**: `EA:CD:C6:C5:DC:59` (for Apple TV 1)
+   - **protocol**: `companion` (THIS IS CRITICAL - not airplay!)
 5. Click **"Execute"**
 6. **LOOK AT YOUR TV** - A 4-digit PIN will appear on the screen
 
@@ -58,6 +62,15 @@ Repeat these steps for each Apple TV:
    (Replace `1234` with the actual PIN shown on your TV)
 6. Click **"Execute"**
 7. You should see a success response with credentials
+
+### Why Companion Protocol?
+
+| Protocol | Supports |
+|----------|----------|
+| **companion** | Navigation (up/down/left/right/select/menu/home), playback |
+| airplay | Media playback only (no navigation) |
+
+**Always use `companion` for full remote control!**
 
 ### 2c. Verify Pairing Worked
 

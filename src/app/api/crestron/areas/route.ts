@@ -154,7 +154,7 @@ export async function PUT(request: NextRequest) {
       // Create new area if it doesn't exist
       targetArea = {
         id: targetAreaId,
-        name: targetAreaId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        name: targetAreaId.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
         order: areasConfig.areas.length + 1,
         roomNames: [roomName],
       };

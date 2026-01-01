@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CrestronClient } from "@/lib/crestron/client";
+import type { MediaRoom } from "@/lib/crestron/types";
 
 // Force dynamic rendering - disable route caching to always get fresh device data
 export const dynamic = 'force-dynamic';
@@ -71,8 +72,8 @@ function transformMediaRoom(m: CrestronMediaRoom) {
     currentPowerState: normalizedPowerState,
     currentProviderId: currentProviderId,
     availableProviders: availableProviders,
-    availableVolumeControls: m.availableVolumeControls || ["none"],
-    availableMuteControls: m.availableMuteControls || ["none"],
+    availableVolumeControls: (m.availableVolumeControls || ["none"]) as MediaRoom["availableVolumeControls"],
+    availableMuteControls: (m.availableMuteControls || ["none"]) as MediaRoom["availableMuteControls"],
     isPoweredOn: normalizedPowerState === "On",
     isMuted: normalizedMuteState === "Muted",
     volumePercent,
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
       // If it's a raw CrestronMediaRoom object (has number id or availableSources), transform it
       if (typeof transformedData === 'object' && transformedData !== null && 
           (typeof transformedData.id === 'number' || 'availableSources' in transformedData)) {
-        transformedData = transformMediaRoom(transformedData as CrestronMediaRoom);
+        transformedData = transformMediaRoom(transformedData as unknown as CrestronMediaRoom);
       }
       
       return NextResponse.json({

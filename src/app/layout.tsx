@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { DataProvider } from "@/components/providers";
+import { AIGlobalProvider } from "@/components/ai";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -36,7 +37,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
-        <DataProvider>{children}</DataProvider>
+        <DataProvider>
+          <AIGlobalProvider>{children}</AIGlobalProvider>
+        </DataProvider>
       </body>
     </html>
   );

@@ -207,20 +207,47 @@ export function MediaRoomCard({ mediaRoom, compact = false, roomName }: MediaRoo
         return;
       }
       
-      // Use the first connected device or first available device
-      const targetDevice = devices.find((d: { is_connected: boolean }) => d.is_connected) || devices[0];
+      // Filter to only actual Apple TV devices (not Samsung TVs, Sonos, etc.)
+      const appleTVDevices = devices.filter((d: { name: string }) => {
+        const name = d.name.toLowerCase();
+        return name.includes("apple") || name.includes("atv");
+      });
+      
+      if (appleTVDevices.length === 0) {
+        console.warn("No Apple TV devices found (only other AirPlay devices)");
+        return;
+      }
+      
+      // Try to match Apple TV to the current room/source name
+      const currentSource = mediaRoom.currentSourceName?.toLowerCase() || "";
+      let targetDevice = appleTVDevices.find((d: { name: string }) => 
+        currentSource.includes(d.name.toLowerCase()) || 
+        d.name.toLowerCase().includes(currentSource.replace("apple tv", "").trim())
+      );
+      
+      // If no match, use first connected Apple TV or first available
+      if (!targetDevice) {
+        targetDevice = appleTVDevices.find((d: { is_connected: boolean }) => d.is_connected) || appleTVDevices[0];
+      }
+      
+      console.log(`Sending ${command} to Apple TV: ${targetDevice.name} (${targetDevice.id})`);
       
       // Send the command
-      await fetch(`/api/appletv/devices/${targetDevice.id}/remote/${command}`, {
+      const response = await fetch(`/api/appletv/devices/${targetDevice.id}/remote/${command}`, {
         method: "POST",
       });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("Apple TV command failed:", error);
+      }
     } catch (error) {
       console.warn("Failed to send Apple TV command:", error);
     } finally {
       setIsRemoteLoading(false);
       setTimeout(() => setLastRemoteCommand(null), 200);
     }
-  }, []);
+  }, [mediaRoom.currentSourceName]);
 
   // Compact view for lists
   if (compact) {

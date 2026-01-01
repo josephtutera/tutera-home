@@ -10,6 +10,5 @@ export { LockCard, LockAllButton } from "./LockCard";
 export { SensorCard, SensorSummary } from "./SensorCard";
 export { MediaRoomCard } from "./MediaRoomCard";
 export { MediaZoneControl } from "./MediaZoneControl";
-export { MergeRoomsModal } from "./MergeRoomsModal";
 export { AppleTVRemote } from "./AppleTVRemote";
 
