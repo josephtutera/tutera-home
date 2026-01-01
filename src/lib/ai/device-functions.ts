@@ -213,6 +213,26 @@ export const deviceFunctions: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "provide_suggestions",
+      description: "ALWAYS call this function at the end of every response to provide contextual follow-up suggestions. These suggestions appear as quick-action buttons for the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          suggestions: {
+            type: "array",
+            items: { type: "string" },
+            description: "3-5 short, relevant follow-up commands the user might want to do next. Make them specific to the current context and action performed. Examples: after turning off lights, suggest 'Turn them back on' or 'Set to 50%'. After a status query, suggest actions based on current state.",
+            minItems: 3,
+            maxItems: 5,
+          },
+        },
+        required: ["suggestions"],
+      },
+    },
+  },
 ];
 
 /**
@@ -275,7 +295,21 @@ HANDLING "EXCEPT" / "BUT NOT" COMMANDS:
   - control_lights(action: "on", room: "Master Bedroom", light_name: "Main Cans")
 
 UNDO COMMANDS:
-When the user says "undo", "forget it", "nevermind", "undo that", "go back", or similar phrases, use the undo_last_command function to restore the previous state.`;
+When the user says "undo", "forget it", "nevermind", "undo that", "go back", or similar phrases, use the undo_last_command function to restore the previous state.
+
+FOLLOW-UP SUGGESTIONS (CRITICAL):
+- ALWAYS call the provide_suggestions function at the END of every response
+- Provide 3-5 contextual suggestions based on:
+  1. The action just performed (e.g., after turning off lights: "Turn them back on", "Set to 50%")
+  2. The current room/area context (e.g., "Adjust Master Bedroom temperature")
+  3. Related actions (e.g., after controlling lights: "Check climate", "What else is on?")
+  4. Common follow-ups (e.g., "Undo", "What's the status?")
+- Make suggestions SHORT (under 30 characters) - they appear as buttons
+- Make them specific to the conversation context, not generic
+- Examples of good contextual suggestions:
+  - After "turn off master bedroom lights": ["Turn them back on", "Set to 50%", "Check other rooms", "Undo"]
+  - After status query: ["Turn off all on", "Set to 75%", "Check climate"]
+  - After scene activation: ["Undo", "What's on now?", "Adjust lights"]`;
 
 // Type definitions for function call arguments
 export interface LightControlArgs {

@@ -66,6 +66,28 @@ function extractArray<T>(data: unknown, key: string): T[] {
   return [];
 }
 
+// Raw Crestron light format
+interface RawCrestronLight {
+  id: number;
+  name: string;
+  roomId?: number;
+  level: number;
+  subType?: string;
+}
+
+// Transform raw Crestron light to our Light type
+function transformLight(l: RawCrestronLight): Light {
+  return {
+    id: String(l.id),
+    name: l.name,
+    type: 'light',
+    subType: l.subType?.toLowerCase() === 'switch' ? 'switch' : 'dimmer',
+    roomId: l.roomId ? String(l.roomId) : undefined,
+    level: l.level,
+    isOn: l.level > 0, // Derive isOn from level
+  };
+}
+
 // Raw Crestron thermostat format
 interface RawCrestronThermostat {
   id: number;
@@ -127,6 +149,13 @@ async function fetchDeviceState(client: CrestronClient) {
       client.getScenes(),
     ]);
 
+  // Extract and transform lights from raw Crestron format
+  const rawLights = extractArray<RawCrestronLight>(
+    lightsRes.success ? lightsRes.data : [], 
+    'lights'
+  );
+  const lights = rawLights.map(transformLight);
+  
   // Extract and transform thermostats from raw Crestron format
   const rawThermostats = extractArray<RawCrestronThermostat>(
     thermostatsRes.success ? thermostatsRes.data : [], 
@@ -137,7 +166,7 @@ async function fetchDeviceState(client: CrestronClient) {
   return {
     areas: extractArray<Area>(areasRes.success ? areasRes.data : [], 'areas'),
     rooms: extractArray<Room>(roomsRes.success ? roomsRes.data : [], 'rooms'),
-    lights: extractArray<Light>(lightsRes.success ? lightsRes.data : [], 'lights'),
+    lights,
     thermostats,
     mediaRooms: extractArray<MediaRoom>(mediaRoomsRes.success ? mediaRoomsRes.data : [], 'mediaRooms'),
     scenes: extractArray<Scene>(scenesRes.success ? scenesRes.data : [], 'scenes'),
@@ -733,6 +762,23 @@ ${thermostatsList}
       }
     }
 
+    // Extract suggestions from tool calls if provided
+    let suggestions: string[] = [];
+    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      for (const toolCall of responseMessage.tool_calls) {
+        if (toolCall.type === "function" && toolCall.function.name === "provide_suggestions") {
+          try {
+            const suggestionsArgs = JSON.parse(toolCall.function.arguments);
+            if (suggestionsArgs.suggestions && Array.isArray(suggestionsArgs.suggestions)) {
+              suggestions = suggestionsArgs.suggestions.slice(0, 5);
+            }
+          } catch (e) {
+            console.error("Failed to parse suggestions:", e);
+          }
+        }
+      }
+    }
+
     // Combine all messages or use AI's text response
     const finalResponse = resultMessages.length > 0 
       ? resultMessages.join(" ") 
@@ -743,6 +789,7 @@ ${thermostatsList}
       response: finalResponse,
       actions,
       wasUndo: false,
+      suggestions, // Include dynamic suggestions for the UI
     });
   } catch (error) {
     console.error("AI command error:", error);

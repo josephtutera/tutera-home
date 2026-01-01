@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Settings, Sliders, Grid3X3, RotateCcw, Zap, Move, Home, ChevronRight } from "lucide-react";
+import { Settings, Sliders, Grid3X3, RotateCcw, Zap, Move, Home, ChevronRight, Tv } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { BottomNavigation } from "@/components/layout/Navigation";
@@ -324,6 +324,32 @@ export default function SettingsPage() {
                     </h3>
                     <p className="text-xs text-[var(--text-secondary)]">
                       Group rooms together for easier control
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)]" />
+              </Link>
+            </Card>
+          </motion.section>
+
+          {/* Device Setup */}
+          <motion.section variants={itemVariants}>
+            <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
+              Device Setup
+            </h2>
+            
+            <Card padding="none">
+              <Link href="/settings/appletv" className="flex items-center justify-between p-4 hover:bg-[var(--surface-hover)] transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
+                    <Tv className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-[var(--text-primary)]">
+                      Apple TV Pairing
+                    </h3>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Connect Apple TVs for remote control
                     </p>
                   </div>
                 </div>

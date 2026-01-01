@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useCommandHistoryStore } from "@/stores/commandHistoryStore";
+import { useSuggestionStore } from "@/stores/suggestionStore";
 import type { ExecutedAction } from "@/stores/commandHistoryStore";
 import type { DeviceStateSnapshot } from "@/lib/ai/command-processor";
 
@@ -82,6 +83,11 @@ export function AICommandModal({ isOpen, onClose }: AICommandModalProps) {
   const { getAuthHeaders } = useAuthStore();
   const { addCommand, markUndone, getLastUndoableCommand, getSnapshotsForUndo } =
     useCommandHistoryStore();
+  const { setContextualSuggestions, recordCommand, getTopSuggestions, clearContextualSuggestions } =
+    useSuggestionStore();
+  
+  // Get current suggestions (reactive)
+  const suggestions = getTopSuggestions(5);
 
   // Check for speech recognition support
   useEffect(() => {
@@ -229,6 +235,9 @@ export function AICommandModal({ isOpen, onClose }: AICommandModalProps) {
     const messageText = overrideInput || input.trim();
     if (!messageText || isProcessing) return;
     
+    // Record command for frequent usage tracking
+    recordCommand(messageText);
+    
     // Add user message to conversation
     const userMessageId = `user-${Date.now()}`;
     const newUserMessage = {
@@ -268,6 +277,11 @@ export function AICommandModal({ isOpen, onClose }: AICommandModalProps) {
       const data = await response.json();
       
       if (data.success) {
+        // Update contextual suggestions from AI if provided
+        if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          setContextualSuggestions(data.suggestions);
+        }
+        
         // Check if AI requested to clear conversation
         if (data.clearConversation) {
           setConversation([{
@@ -276,6 +290,8 @@ export function AICommandModal({ isOpen, onClose }: AICommandModalProps) {
             content: data.response,
             timestamp: new Date(),
           }]);
+          // Clear contextual suggestions for fresh start
+          clearContextualSuggestions();
         } else {
           const assistantMessageId = `assistant-${Date.now()}`;
           const hasActions = data.actions && data.actions.length > 0;
@@ -330,7 +346,7 @@ export function AICommandModal({ isOpen, onClose }: AICommandModalProps) {
     } finally {
       setIsProcessing(false);
     }
-  }, [input, isProcessing, getAuthHeaders, addCommand, conversation]);
+  }, [input, isProcessing, getAuthHeaders, addCommand, conversation, recordCommand, setContextualSuggestions, clearContextualSuggestions]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -510,23 +526,21 @@ export function AICommandModal({ isOpen, onClose }: AICommandModalProps) {
                 </button>
               </div>
               
-              {/* Quick suggestions */}
+              {/* Quick suggestions - dynamic based on context and usage */}
               <div className="flex flex-wrap gap-2 mt-3">
-                {["Turn off all lights", "What's on?", "Set house to 70°"].map(
-                  (suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => {
-                        setInput(suggestion);
-                        handleSubmit(suggestion);
-                      }}
-                      disabled={isProcessing}
-                      className="px-3 py-1.5 text-xs bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] rounded-full transition-colors disabled:opacity-50"
-                    >
-                      {suggestion}
-                    </button>
-                  )
-                )}
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => {
+                      setInput(suggestion);
+                      handleSubmit(suggestion);
+                    }}
+                    disabled={isProcessing}
+                    className="px-3 py-1.5 text-xs bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] rounded-full transition-colors disabled:opacity-50"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
               </div>
             </div>
           </motion.div>

@@ -29,7 +29,10 @@ async function proxyRequest(
   method: string = "GET"
 ) {
   const path = pathSegments.join("/");
-  const targetUrl = `${PYATV_SERVICE_URL}/${path}`;
+  // Forward query parameters from the original request
+  const url = new URL(request.url);
+  const queryString = url.searchParams.toString();
+  const targetUrl = `${PYATV_SERVICE_URL}/${path}${queryString ? `?${queryString}` : ''}`;
   
   try {
     const fetchOptions: RequestInit = {
