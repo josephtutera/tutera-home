@@ -165,6 +165,31 @@ export const deviceFunctions: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "request_confirmation",
+      description: "Request user confirmation before executing a large-scale action. Use this when the action would affect MORE THAN 15 devices. Present the user with the scope of the action and ask for confirmation.",
+      parameters: {
+        type: "object",
+        properties: {
+          action_description: {
+            type: "string",
+            description: "Description of what you're about to do (e.g., 'turn on 210 lights in the whole house')",
+          },
+          device_count: {
+            type: "number",
+            description: "Number of devices that would be affected",
+          },
+          alternative_suggestion: {
+            type: "string",
+            description: "A suggested alternative based on conversation context (e.g., 'Or did you mean the Master Bedroom with 8 lights?')",
+          },
+        },
+        required: ["action_description", "device_count"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_status",
       description: "Get the current status of devices. Use to answer questions about what's on, current temperatures, etc.",
       parameters: {
@@ -226,10 +251,19 @@ RESPONSE STYLE:
 
 CONVERSATION CONTEXT:
 - IMPORTANT: Maintain context from previous messages in the conversation
-- If the user previously mentioned a room (e.g., "master bedroom") and then says "turn them all off" or "all of them", apply the action to that same room, NOT the whole house
+- If the user previously mentioned a room (e.g., "master bedroom") and then says "turn them all on" or "all of them", apply the action to that same room, NOT the whole house
 - Pronouns like "them", "those", "it", "all" refer to the devices/room from the previous context
 - Only apply actions to the whole house if the user explicitly says "whole house", "everywhere", "all lights in the house", or similar
 - When in doubt about scope, ask for clarification rather than affecting the whole house
+
+CONFIRMATION FOR LARGE ACTIONS:
+- CRITICAL: Before executing any action that affects MORE THAN 15 devices, you MUST ask for confirmation first
+- Do NOT call the control function - instead, respond with a confirmation question like:
+  "This would turn on 210 lights across the whole house. Do you want me to proceed, or did you mean just the Master Bedroom?"
+- If the user was previously discussing a specific room, remind them: "Did you mean the Master Bedroom (8 lights) or the whole house (210 lights)?"
+- Only proceed with large-scale actions after the user explicitly confirms with "yes", "do it", "proceed", "confirm", etc.
+- This applies to lights, thermostats, and media rooms
+- Small actions (15 devices or fewer) can proceed without confirmation
 
 HANDLING "EXCEPT" / "BUT NOT" COMMANDS:
 - For commands like "turn all off except the main cans" or "turn them off but not the pendants":

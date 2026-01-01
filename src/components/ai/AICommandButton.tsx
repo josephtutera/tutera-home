@@ -47,7 +47,7 @@ export function AICommandButton() {
             onHoverStart={() => setIsHovered(true)}
             onHoverEnd={() => setIsHovered(false)}
             onClick={() => setIsModalOpen(true)}
-            className="fixed bottom-24 md:bottom-8 right-20 md:right-24 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-[var(--accent)] to-[#6366f1] text-white shadow-lg shadow-[var(--accent)]/30 flex items-center justify-center group"
+            className="fixed top-20 right-6 z-40 w-12 h-12 rounded-full bg-gradient-to-br from-[var(--accent)] to-[#6366f1] text-white shadow-lg shadow-[var(--accent)]/30 flex items-center justify-center group"
             style={{
               boxShadow: isHovered
                 ? "0 8px 30px rgba(99, 102, 241, 0.4)"
@@ -86,7 +86,7 @@ export function AICommandButton() {
               animate={isHovered ? { rotate: [0, -10, 10, 0] } : {}}
               transition={{ duration: 0.5 }}
             >
-              <Sparkles className="w-6 h-6" />
+              <Sparkles className="w-5 h-5" />
             </motion.div>
           </motion.button>
         )}
@@ -99,7 +99,7 @@ export function AICommandButton() {
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
-            className="fixed bottom-[7.5rem] md:bottom-10 right-36 md:right-40 z-40 bg-[var(--surface)] text-[var(--text-primary)] px-3 py-2 rounded-lg shadow-lg text-sm font-medium whitespace-nowrap border border-[var(--border-light)]"
+            className="fixed top-20 right-20 z-40 bg-[var(--surface)] text-[var(--text-primary)] px-3 py-2 rounded-lg shadow-lg text-sm font-medium whitespace-nowrap border border-[var(--border-light)]"
           >
             <div className="flex items-center gap-2">
               <span>AI Control</span>

@@ -362,7 +362,7 @@ export function AICommandModal({ isOpen, onClose }: AICommandModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:bottom-24 md:w-[420px] bg-[var(--surface)] rounded-2xl shadow-2xl border border-[var(--border-light)] z-50 overflow-hidden"
+            className="fixed top-32 left-4 right-4 md:left-auto md:right-6 md:w-[420px] bg-[var(--surface)] rounded-2xl shadow-2xl border border-[var(--border-light)] z-50 overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-light)] bg-gradient-to-r from-[var(--accent)]/10 to-transparent">

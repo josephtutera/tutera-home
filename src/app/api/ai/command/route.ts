@@ -688,6 +688,27 @@ ${thermostatsList}
             };
             break;
             
+          case "request_confirmation":
+            // AI is requesting confirmation before a large action
+            const confirmArgs = args as { 
+              action_description: string; 
+              device_count: number; 
+              alternative_suggestion?: string;
+            };
+            let confirmMessage = `⚠️ This would ${confirmArgs.action_description} (${confirmArgs.device_count} devices). `;
+            if (confirmArgs.alternative_suggestion) {
+              confirmMessage += confirmArgs.alternative_suggestion + " ";
+            }
+            confirmMessage += "Reply 'yes' to proceed or specify what you meant.";
+            
+            return NextResponse.json({
+              success: true,
+              response: confirmMessage,
+              actions: [],
+              wasUndo: false,
+              needsConfirmation: true,
+            });
+
           case "start_new_conversation":
             // Signal to the client to clear conversation
             result = {
